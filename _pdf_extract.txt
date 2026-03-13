@@ -1,0 +1,328 @@
+pages 13
+
+---PAGE 1---
+246 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+PhiNet: Speaker V eriﬁcation With
+Phonetic Interpretability
+Yi Ma , Student Member , IEEE, Shuai Wang , Senior Member , IEEE, Tianchi Liu , Student Member , IEEE,
+and Haizhou Li , Fellow, IEEE
+Abstract—Despite remarkable progress, automatic speaker ver-
+iﬁcation (ASV) systems typically lack the transparency required
+for high-accountability applications. Motivated by how human
+experts perform forensic speaker comparison (FSC), we propose a
+speaker veriﬁcation network with phonetic interpretability,PhiNet,
+designed to enhance both local and global interpretability by lever-
+aging phonetic evidence in decision-making. For users, PhiNet
+provides detailed phonetic-level comparisons that enable manual
+inspection of speaker-speciﬁc features and facilitate a more critical
+evaluation of veriﬁcation outcomes. For developers, it offers explicit
+reasoning behind veriﬁcation decisions, simplifying error tracing
+and informing hyperparameter selection. In our experiments, we
+demonstrate PhiNet’s interpretability with practical examples, in-
+cluding its application in analyzing the impact of different hyperpa-
+rameters. We conduct both qualitative and quantitative evaluations
+of the proposed interpretability methods and assess speaker veri-
+ﬁcation performance across multiple benchmark datasets, includ-
+ing V oxCeleb, SITW, and LibriSpeech. Results show that PhiNet
+achieves performance comparable to traditional black-box ASV
+models while offering meaningful, interpretable explanations for
+its decisions, bridging the gap between ASV and forensic analysis.
+Index Terms —Speaker veriﬁcation, interpretability, forensic
+speaker comparison, phonetic, XAI.
+I. I NTRODUCTION
+A
+UTOMA TIC speaker veriﬁcation (ASV) seeks to validate
+an identity claim based on the speaker’s voice. Successful
+ASV models include Gaussian Mixture Model-Universal
+Background Model (GMM-UBM) [1], [2], [3], [4], i-vector [5],
+Received 16 March 2025; revised 7 October 2025 and 21 November 2025;
+accepted 22 November 2025. Date of publication 10 December 2025; date of
+current version 26 December 2025. This work was supported in part by the
+National Natural Science Foundation of China under Grant 62401377 and Grant
+62271432, in part by Shenzhen Science and Technology Program Shenzhen
+Key Laboratory under Grant ZDSYS20230626091302006, and in part by the
+Program for Guangdong Introducing Innovative and Entrepreneurial Teams
+under Grant 2023ZT10X044. The associate editor coordinating the review of this
+article and approving it for publication was Dr. Xiao-Lei Zhang.(Corresponding
+author: Shuai Wang.)
+Yi Ma is with the Department of Electrical and Computer Engineering,
+National University of Singapore, Singapore 119077 (e-mail: mayi@u.nus.edu).
+Shuai Wang is with the School of Intelligence Science and Technology,
+Nanjing University, Suzhou 215163, China, and also with Shenzhen Loop Area
+Institute, Shenzhen 518045, China (e-mail: shuaiwang@nju.edu.cn).
+Tianchi Liu is with the Department of Electrical and Computer Engineering,
+National University of Singapore, Singapore 119077, and also with LIGHT-
+SPEED, Singapore 068897 (e-mail: tianch_liu@u.nus.edu).
+Haizhou Li is with the School of Artiﬁcial Intelligence, Shenzhen Research
+Institute of Big Data, The Chinese University of Hong Kong, Shenzhen 518172,
+China, and also with Shenzhen Loop Area Institute, Shenzhen 518045, China
+(e-mail: haizhouli@cuhk.edu.cn).
+The code can be found in: https://github.com/mmmmayi/PhiNet
+Digital Object Identiﬁer 10.1109/TASLPRO.2025.3642540
+and recently neural network-based approaches such as
+x-vector [6], r-vector [7] and ECAPA-TDNN [8], which
+have dramatically improved both accuracy and robustness in
+speaker veriﬁcation tasks. While forensic speaker comparison
+(FSC) also seeks to validate identity claims, it emphasizes
+collecting evidence to support decision-making [9], [10],
+[11]. Unlike ASV , FSC is inherently complex, with decisions
+often subject to debate. Speech scientists acknowledge that
+voice alone cannot be used to conﬁrm identity with absolute
+certainty [9]. Consequently, forensic experts rely on detailed and
+persuasive evidence to support their conclusions, particularly
+in legal contexts, where ﬁndings must be presented in a manner
+understandable to judges and open to scrutiny. Despite their
+shared objective, ASV and FSC approach speaker veriﬁcation
+differently. FSC employs scientiﬁc tools such as voice activity
+detectors, spectrogram analyzers, and pitch trackers to form
+expert opinions, whereas ASV systems typically function as
+black-box models [11], [12], [13], [14]. These systems typically
+produce a single similarity score to indicate a match between
+voice samples, offering minimal interpretability [15]. This lack
+of transparency undermines the trust of the user due to concerns
+about the reliability of the system and potential biases.
+Providing evidence for speaker veriﬁcation not only builds
+user 
+
+---PAGE 2---
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 247
+Motivated by the evidential approach in FSC, we introduce
+the Speaker V eriﬁcation with Phonetic Interpretability Network
+(PhiNet), which enhances ASV by providing linguistic-based
+evidence alongside the veriﬁcation score. On one hand, this evi-
+dence deconstructs the ﬁnal score into observable phonetic-level
+comparisons, highlighting the contribution of each segment. We
+r e f e rt ot h i sa slocal interpretability since it operates at the trial
+level. On the other hand, PhiNet offers global interpretability
+by ranking phonemes based on their distinctiveness for speaker
+identiﬁcation, thereby assisting researchers in understanding
+potential system biases. Notably, our research reveals that the
+distinctiveness rank of phonemes in our model aligns with
+their importance observed in FSC. For example, our model
+consistently identiﬁes nasals and vowels as crucial for speaker
+veriﬁcation, while also capturing signiﬁcant variability in the
+distinctiveness of fricative sounds. In summary, this paper makes
+the following contributions:
+r To bridge the gap between ASV and FSC, especially the
+black-box nature of current ASV systems, we propose
+PhiNet, the ﬁrst self-interpretable speaker veriﬁcation net-
+work that explains its decision-making process.
+r PhiNet leverages phoneme distinctiveness, offering
+dual interpretability: (a) Locally, PhiNet reveals each
+phoneme’s contribution to the veriﬁcation decision of an
+for individual trial; (b) Globally, it identiﬁes patterns con-
+sistent with FSC heuristics, demonstrating which speciﬁc
+phoneme and its pronunciation patterns signiﬁcantly con-
+tribute to the veriﬁcation outcome.
+r Unlike most ASV models that only focus on making veriﬁ-
+cation decision, PhiNet implements a training scheme that
+simulates the veriﬁcation process, ensuring consistency
+between training and veriﬁcation phases and enhancing
+the reliability of interpretable decisions.
+r Through comprehensive experimental analysis, we un-
+cover insights that explain previously observed phenom-
+ena in speaker recognition, such as the poor robustness
+of short-duration speaker recognition and the impact of
+training segment length on veriﬁcation performance.
+The remainder of the paper is organized as follows. In
+Section II we introduce the related work. In Section III we
+formulate PhiNet and its training scheme. Section IV discusses
+the experimental setup. In SectionV, we report the experimental
+results. Section VI concludes the study.
+II. R
+ELA TEDWORK
+We ﬁrst introduce the concept of neural network interpretabil-
+ity in the general ﬁeld of machine learning, then discuss the
+current research on neural network interpretability for speaker-
+related tasks.
+A. Neural Network Interpretability
+Interpretability in neural networks, also known as explanabil-
+ity, has gained prominence in deep learning due to the black-box
+nature of these models. It refers to methods that reveal how a
+model reaches its conclusions [16], [24], [25]. In this section,
+following the taxonomy in [24], we classify interpretability
+methods along two axes of passive vs. active and global vs.
+local.
+1) Passive vs. Active: Passive interpretation methods present
+explanations from a model’s existing predictions without alter-
+ing the neural network’s architecture or training process. In con-
+trast, active methods, or self-interpretable techniques, modify
+the model architecture or training process for interpretability,
+which are considered more accurate and direct [26], [27].
+a) Passive interpretation: In early stages, extracting logical
+rules or building decision trees were the approach making model
+decisions more interpretable [28], [29]. Other popular meth-
+ods include feature attribution, divided into backpropagation-
+based (e.g., gradients to assess feature impact [30], [31], [32],
+[33], [34]) and model-agnostic approaches (e.g., LIME [35]
+and Shapley V alues [36], [37], which use perturbation-based
+analysis [38], [39]). Techniques like activation maximization
+reveal high-level features by optimizing inputs to maximize neu-
+ron activations [40], [41], [42], [43]. Additionally, data-centric
+methods explain predictions by identifying inﬂuential training
+samples [44], [45].
+b) Active interpretation: Prototype-based methods, such as
+ProtoPNet [27], [46], [47], [48] and its variants (e.g. De-
+formable ProtoPNet [49], PIP-Net [50] and XProtoNet [51]),
+compare inputs to learned prototypes, producing intuitive ex-
+planations. Based on this, to ensure explanations remain stable
+under transformations of the input data, SITE [26] integrates
+transformation-equivariant prototypes into the model’s archi-
+tecture. Concept Bottleneck Models [52]
+use a method similar
+to prototype, and the language models advances this to generate
+bottleneck concepts without human-labeled attributes [53]. Fea-
+ture ranking [54], [55] and component modeling [56], [57], [58]
+further enhance interpretability by priorit
+
+---PAGE 3---
+248 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+parts. Wojtas and Cheny [54] integrated feature subset selection
+with model performance optimization, providing global insights
+into feature contributions and enhancing explainability through
+a stochastic optimization strategy. Pedapati et al.[61] introduced
+a technique for constructing globally interpretable models that
+closely align with local contrastive explanations derived from
+black-box models. Fong and V edaldi[42] proposed the Net2V ec
+framework, which maps semantic concepts to vector embed-
+dings aligned with neural network ﬁlter activations. Unlike local
+interpretability, global interpretability uncovers patterns and
+rules that deﬁne a network’s decision-making across the entire
+dataset, offering a comprehensive, systemic understanding of
+its behavior. Furthermore, it transcends individual predictions
+by revealing the fundamental principles learned by the net-
+work [24].
+B. Interpretability for Speaker-Related Tasks
+The topic of interpretability has recently gained attention
+in speaker-related tasks as well. Most existing studies have
+primarily focused on explaining closed-set speaker recognition
+tasks, while open-set speaker veriﬁcation tasks remain largely
+unexplored. For speaker recognition tasks, identifying the time-
+frequency bins within input features that are most critical to the
+network has become a popular approach for interpretability. For
+example, Li et al. [62] investigated the reliability of three Class
+Activation Map-based algorithms as visualization tools for deep
+speaker recognition models. Building on this, they utilized these
+methods to analyze the effects of data augmentation on model
+robustness [63] and to evaluate the contributions of various
+phoneme categories to deep speaker models [64]. Similarly,
+Zhang et al. [65] also used visualization as an interpretability
+tool to analyze speaker recognition models, using ﬁve attribution
+methods, including Integrated Gradients [32] and SHAP [37],t o
+visualize voiceprint features within the ECAPA-TDNN frame-
+work. Similarly, Thebaud et al. [66] leveraged Integrated Gradi-
+ents to assess the contribution of various phoneme categories
+to the performance of speaker veriﬁcation models. Beyond
+visualization, Ben-Amor et al. [67] proposed a novel explain-
+ability framework using the Binary-Attribute Likelihood Ratio
+(BA-LR), which decomposes speaker recognition scoring into
+interpretable sub-processes based on binary speech attributes.
+The work most closely related to the method we pursue[68] is
+the explainable attribute-based speaker veriﬁcation framework
+proposed by Wu et al. [69]. In our previous work [68],w ei n t r o -
+duced phonetic traits to represent the speaker-speciﬁc informa-
+tion embedded in each phoneme. However, these traits were uti-
+lized passively to explain the speaker network rather than being
+directly involved in the prediction process. This approach may
+lead to a gap in faithfulness between the provided explanations
+and the actual working mechanism. In [69], the authors adopt a
+two-stage pipeline leveraging Concept Bottleneck Models [52]
+to integrate explainability directly into the speaker veriﬁcation
+process. However, their system’s performance is limited by a
+small set of attributes that lack generalization, resulting in a
+signiﬁcant compromise of accuracy. It is worth noting that most
+existing interpretability studies for speaker-related tasks adopt
+passive and local interpretability methods. While these methods
+are effective in explaining speciﬁc predictions, they often fail
+to provide insights into the overall decision-making logic of the
+model. Additionally, while visualization tools have proven ef-
+fective for analyzing closed-set tasks, their applicability remains
+limited when it comes to open-set tasks like speaker veriﬁcation,
+where the ability to generalize to unseen speakers is critical.
+III. M
+ETHODOLOGY
+We introduce a novel interpretability framework designed to
+provide both global and local insights into the decision-making
+process of speaker veriﬁcation. Fig. 1 shows the overall archi-
+tecture of our proposed PhiNet, which is composed of three key
+components: the phonetic trait extractor, trait-level comparison
+layer, and decision layer.
+A. V eriﬁcation With Phonetic Interpretability
+Our PhiNet performs speaker veriﬁcation by comparing the
+enrollment and test utterance to generate a score that quantiﬁes
+the similarity between the speakers of these two utterances.
+Let’s assume a phonetic inventory of I phonemes. For a pair
+of utterances, the phonetic trait extractor generates a set of I
+phonetic traits, denoted as E = {ei}I
+i=1 and T = {ti}I
+i=1 for
+the pair. Eachei and ti captures the speaker-speciﬁc information
+associated with phoneme i in an utterance.
+In the phonetic trait comparison layer, we compute the pho-
+netic scoresi for each phoneme i based on the cosine similarity
+between ei and ti. This score quantiﬁes the similari
+
+---PAGE 4---
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 249
+Fig. 1. Block diagram of the proposed framework for speaker veriﬁcation with phonetic interpretability.
+Fig. 2. Block diagram of the phonetic trait extractor.
+in textless mode [70], frame-level features are then passed to
+the phonetic-level layer. Using these phonetic boundaries, we
+calculate the average of frame-level features within phoneme
+i segment. This averaged representation is treated as the pho-
+netic trait, which we consider to capture the speaker-speciﬁc
+characteristics associated with phoneme i. For phonemes that
+do not appear in a given utterance, the associated phonetic trait
+is set to 0 for the absent phoneme i. This design is consistent
+with our prior work [68], we invite readers to consult the full
+paper and accompanying code 1 for a deeper understanding of
+the implementation.
+2) Trait Level Comparison: We compute the cosine similar-
+ity of each pair of(ei, ti). Due to adapting the frame-level layers
+of ECAPA-TDNN, the extracted phonetic traits are constrained
+to be nonnegative, making the resulting cosine similarity fall
+within the range [0, 1]. A transformation function is applied
+on the cosine similarity, which spans the result into range of
+[−∞, +∞]:
+di = ei · ti
+∥ei∥∥ti∥, (1)
+si = f2
+(
+φ
+(
+f1(di)
+))
+·di, (2)
+wheref1 andf2 are linear layers with an intermediate dimension
+c and f2 has no bias term. Speciﬁcally, f1 : R1 → Rc, and f2 :
+1https://github.com/mmmmayi/ExPO
+Fig. 3. Illustration of two conditions of adjusting phonetic scores based on
+phoneme distinctiveness. The top ﬁgure shows the adjustment when the phonetic
+score is closer toa, while the bottom ﬁgure depicts the adjustment when the score
+is closer tob. Here,a andb represent the scores for completely different speakers
+and the same speaker, respectively.
+Rc → R1, wherec controls the dimension of the mapping vector.
+Both f1 and f2 are shared across all phoneme. φis the Tanh
+activation function.
+3) Decision Layer: In the decision layer, we generate the ﬁ-
+nal score using [s1,s 2,...,s I ] and [w1,w 2,...,w I ]. The weight
+wi is designed to amplify the contribution of si if phoneme i
+is distinctive for speaker veriﬁcation, otherwise to reduce the
+contribution of si. This effect is illustrated in Fig. 3. Con-
+sider an example where a represents the similarity score for
+completely different speakers and b represents the score for
+identical speakers, with the constrains a<b and si ∈[a,b ].
+We assume that the midpoint between a and b serves as the
+threshold. If si is closer to a, the trial is classiﬁed as involving
+different speakers. Conversely, it is considered to originate from
+the same speaker. When si is closer to a before adjustment
+and phoneme i is distinctive, wi should adjust si shift further
+toward to a. Conversely, for a non-distinctive phoneme i,T h e
+weighted si should have a larger distance to a than before. It’s
+worth to mention that even for a non-distinctive phoneme i,t h e
+adjustment should not contradict the conclusion derived from the
+originalsi. In other words, if|si −a|≤| si −b| before applying
+wi, this relationship should hold true after adjustment.
+A straightforward approach to implement this functionality is
+to ensure si ∈R andwi ∈[0, 1], while assuming a threshold of
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 

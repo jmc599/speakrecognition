@@ -1,0 +1,1347 @@
+
+
+===== PAGE 1 =====
+246 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+PhiNet: Speaker V eriﬁcation With
+Phonetic Interpretability
+Yi Ma , Student Member , IEEE, Shuai Wang , Senior Member , IEEE, Tianchi Liu , Student Member , IEEE,
+and Haizhou Li , Fellow, IEEE
+Abstract—Despite remarkable progress, automatic speaker ver-
+iﬁcation (ASV) systems typically lack the transparency required
+for high-accountability applications. Motivated by how human
+experts perform forensic speaker comparison (FSC), we propose a
+speaker veriﬁcation network with phonetic interpretability,PhiNet,
+designed to enhance both local and global interpretability by lever-
+aging phonetic evidence in decision-making. For users, PhiNet
+provides detailed phonetic-level comparisons that enable manual
+inspection of speaker-speciﬁc features and facilitate a more critical
+evaluation of veriﬁcation outcomes. For developers, it offers explicit
+reasoning behind veriﬁcation decisions, simplifying error tracing
+and informing hyperparameter selection. In our experiments, we
+demonstrate PhiNet’s interpretability with practical examples, in-
+cluding its application in analyzing the impact of different hyperpa-
+rameters. We conduct both qualitative and quantitative evaluations
+of the proposed interpretability methods and assess speaker veri-
+ﬁcation performance across multiple benchmark datasets, includ-
+ing V oxCeleb, SITW, and LibriSpeech. Results show that PhiNet
+achieves performance comparable to traditional black-box ASV
+models while offering meaningful, interpretable explanations for
+its decisions, bridging the gap between ASV and forensic analysis.
+Index Terms —Speaker veriﬁcation, interpretability, forensic
+speaker comparison, phonetic, XAI.
+I. I NTRODUCTION
+A
+UTOMA TIC speaker veriﬁcation (ASV) seeks to validate
+an identity claim based on the speaker’s voice. Successful
+ASV models include Gaussian Mixture Model-Universal
+Background Model (GMM-UBM) [1], [2], [3], [4], i-vector [5],
+Received 16 March 2025; revised 7 October 2025 and 21 November 2025;
+accepted 22 November 2025. Date of publication 10 December 2025; date of
+current version 26 December 2025. This work was supported in part by the
+National Natural Science Foundation of China under Grant 62401377 and Grant
+62271432, in part by Shenzhen Science and Technology Program Shenzhen
+Key Laboratory under Grant ZDSYS20230626091302006, and in part by the
+Program for Guangdong Introducing Innovative and Entrepreneurial Teams
+under Grant 2023ZT10X044. The associate editor coordinating the review of this
+article and approving it for publication was Dr. Xiao-Lei Zhang.(Corresponding
+author: Shuai Wang.)
+Yi Ma is with the Department of Electrical and Computer Engineering,
+National University of Singapore, Singapore 119077 (e-mail: mayi@u.nus.edu).
+Shuai Wang is with the School of Intelligence Science and Technology,
+Nanjing University, Suzhou 215163, China, and also with Shenzhen Loop Area
+Institute, Shenzhen 518045, China (e-mail: shuaiwang@nju.edu.cn).
+Tianchi Liu is with the Department of Electrical and Computer Engineering,
+National University of Singapore, Singapore 119077, and also with LIGHT-
+SPEED, Singapore 068897 (e-mail: tianch_liu@u.nus.edu).
+Haizhou Li is with the School of Artiﬁcial Intelligence, Shenzhen Research
+Institute of Big Data, The Chinese University of Hong Kong, Shenzhen 518172,
+China, and also with Shenzhen Loop Area Institute, Shenzhen 518045, China
+(e-mail: haizhouli@cuhk.edu.cn).
+The code can be found in: https://github.com/mmmmayi/PhiNet
+Digital Object Identiﬁer 10.1109/TASLPRO.2025.3642540
+and recently neural network-based approaches such as
+x-vector [6], r-vector [7] and ECAPA-TDNN [8], which
+have dramatically improved both accuracy and robustness in
+speaker veriﬁcation tasks. While forensic speaker comparison
+(FSC) also seeks to validate identity claims, it emphasizes
+collecting evidence to support decision-making [9], [10],
+[11]. Unlike ASV , FSC is inherently complex, with decisions
+often subject to debate. Speech scientists acknowledge that
+voice alone cannot be used to conﬁrm identity with absolute
+certainty [9]. Consequently, forensic experts rely on detailed and
+persuasive evidence to support their conclusions, particularly
+in legal contexts, where ﬁndings must be presented in a manner
+understandable to judges and open to scrutiny. Despite their
+shared objective, ASV and FSC approach speaker veriﬁcation
+differently. FSC employs scientiﬁc tools such as voice activity
+detectors, spectrogram analyzers, and pitch trackers to form
+expert opinions, whereas ASV systems typically function as
+black-box models [11], [12], [13], [14]. These systems typically
+produce a single similarity score to indicate a match between
+voice samples, offering minimal interpretability [15]. This lack
+of transparency undermines the trust of the user due to concerns
+about the reliability of the system and potential biases.
+Providing evidence for speaker veriﬁcation not only builds
+user trust but also facilitates error tracing and correction
+through explicit reasoning. In contrast, the opaque nature of
+ASV prevents model designers from identifying the root causes
+of errors, limiting opportunities for direct improvements [16].
+To address these limitations of black-box ASV , we aim to
+bridge the gap between ASV and FSC, making ASV results
+useful as forensic evidence, where transparency, reliability, and
+accountability are crucial.
+A key distinction between ASV and FSC lies in how FSC
+extracts evidence. FSC extracts evidence primarily through three
+methods. First, visual spectrogram inspection, based on the hy-
+pothesis that each voice has unique ﬁngerprint-like features[17],
+which is now regarded as scientiﬁcally unreliable due to its
+subjectivity [18], [19]. Second, linguistic-based analysis, widely
+established in forensic settings[9], [19], [20], which decomposes
+speech into units such as consonants, vowels, and intonation
+for acoustic and auditory analysis. Third, automatic techniques
+increasingly integrated with linguistic analysis, which quantify
+features like fundamental frequency (f0) and formants, and
+expressing results as likelihood ratios [21], [22], [23]. Across
+all FSC methods, phonetic information remains crucial for pro-
+ducing reliable and defensible veriﬁcation evidence.
+2998-4173 © 2025 IEEE. All rights reserved, including rights for text and data mining, and training of artiﬁcial intelligence and similar technologi es.
+Personal use is permitted, but republication/redistribution requires IEEE permission. See https://www.ieee.org/publications/rights/index. html for more information.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 2 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 247
+Motivated by the evidential approach in FSC, we introduce
+the Speaker V eriﬁcation with Phonetic Interpretability Network
+(PhiNet), which enhances ASV by providing linguistic-based
+evidence alongside the veriﬁcation score. On one hand, this evi-
+dence deconstructs the ﬁnal score into observable phonetic-level
+comparisons, highlighting the contribution of each segment. We
+r e f e rt ot h i sa slocal interpretability since it operates at the trial
+level. On the other hand, PhiNet offers global interpretability
+by ranking phonemes based on their distinctiveness for speaker
+identiﬁcation, thereby assisting researchers in understanding
+potential system biases. Notably, our research reveals that the
+distinctiveness rank of phonemes in our model aligns with
+their importance observed in FSC. For example, our model
+consistently identiﬁes nasals and vowels as crucial for speaker
+veriﬁcation, while also capturing signiﬁcant variability in the
+distinctiveness of fricative sounds. In summary, this paper makes
+the following contributions:
+r To bridge the gap between ASV and FSC, especially the
+black-box nature of current ASV systems, we propose
+PhiNet, the ﬁrst self-interpretable speaker veriﬁcation net-
+work that explains its decision-making process.
+r PhiNet leverages phoneme distinctiveness, offering
+dual interpretability: (a) Locally, PhiNet reveals each
+phoneme’s contribution to the veriﬁcation decision of an
+for individual trial; (b) Globally, it identiﬁes patterns con-
+sistent with FSC heuristics, demonstrating which speciﬁc
+phoneme and its pronunciation patterns signiﬁcantly con-
+tribute to the veriﬁcation outcome.
+r Unlike most ASV models that only focus on making veriﬁ-
+cation decision, PhiNet implements a training scheme that
+simulates the veriﬁcation process, ensuring consistency
+between training and veriﬁcation phases and enhancing
+the reliability of interpretable decisions.
+r Through comprehensive experimental analysis, we un-
+cover insights that explain previously observed phenom-
+ena in speaker recognition, such as the poor robustness
+of short-duration speaker recognition and the impact of
+training segment length on veriﬁcation performance.
+The remainder of the paper is organized as follows. In
+Section II we introduce the related work. In Section III we
+formulate PhiNet and its training scheme. Section IV discusses
+the experimental setup. In SectionV, we report the experimental
+results. Section VI concludes the study.
+II. R
+ELA TEDWORK
+We ﬁrst introduce the concept of neural network interpretabil-
+ity in the general ﬁeld of machine learning, then discuss the
+current research on neural network interpretability for speaker-
+related tasks.
+A. Neural Network Interpretability
+Interpretability in neural networks, also known as explanabil-
+ity, has gained prominence in deep learning due to the black-box
+nature of these models. It refers to methods that reveal how a
+model reaches its conclusions [16], [24], [25]. In this section,
+following the taxonomy in [24], we classify interpretability
+methods along two axes of passive vs. active and global vs.
+local.
+1) Passive vs. Active: Passive interpretation methods present
+explanations from a model’s existing predictions without alter-
+ing the neural network’s architecture or training process. In con-
+trast, active methods, or self-interpretable techniques, modify
+the model architecture or training process for interpretability,
+which are considered more accurate and direct [26], [27].
+a) Passive interpretation: In early stages, extracting logical
+rules or building decision trees were the approach making model
+decisions more interpretable [28], [29]. Other popular meth-
+ods include feature attribution, divided into backpropagation-
+based (e.g., gradients to assess feature impact [30], [31], [32],
+[33], [34]) and model-agnostic approaches (e.g., LIME [35]
+and Shapley V alues [36], [37], which use perturbation-based
+analysis [38], [39]). Techniques like activation maximization
+reveal high-level features by optimizing inputs to maximize neu-
+ron activations [40], [41], [42], [43]. Additionally, data-centric
+methods explain predictions by identifying inﬂuential training
+samples [44], [45].
+b) Active interpretation: Prototype-based methods, such as
+ProtoPNet [27], [46], [47], [48] and its variants (e.g. De-
+formable ProtoPNet [49], PIP-Net [50] and XProtoNet [51]),
+compare inputs to learned prototypes, producing intuitive ex-
+planations. Based on this, to ensure explanations remain stable
+under transformations of the input data, SITE [26] integrates
+transformation-equivariant prototypes into the model’s archi-
+tecture. Concept Bottleneck Models [52]
+use a method similar
+to prototype, and the language models advances this to generate
+bottleneck concepts without human-labeled attributes [53]. Fea-
+ture ranking [54], [55] and component modeling [56], [57], [58]
+further enhance interpretability by prioritizing relevant features
+and analyzing internal components.
+2) Local vs. Global: At the same time, interpretable neural
+networks can be categorized into local and global forms based
+on the scope of their interpretability. Local interpretation aims
+to provide insights into why the model produced a particular
+output for a speciﬁc input. In contrast, global interpretability
+focuses on understanding the overall decision logic of a model,
+which is consistent for all samples. However the topic of global
+interpretability remains relatively underexplored.
+a) Local interpretation: Techniques in this category often
+rely on attribution methods, which highlight the importance
+of individual input features. For example, one popular local
+interpretation method is the gradient-based [31], [32], [34] and
+perturbation-based [35], [36], [37] attribution approaches we
+mentioned above, such as Grad-CAM [31] and LIME [35] that
+identify the regions of an input that most inﬂuenced a prediction.
+Rule-based methods, such as those in[59] and [60], also provide
+local interpretability. For example, [59] introduces anchors,
+the high-precision, model-agnostic if-then rules that ensure a
+prediction remains consistent when their conditions are met.
+Similarly, [60] proposes a contrastive explanation framework
+that identiﬁes minimal features both necessary to justify a pre-
+diction and those whose absence is critical to preserving it.
+b) Global interpretation: Zhang et al. [41] develops a method
+to transform traditional CNNs into interpretable CNNs, ensuring
+that each high-level ﬁlter explicitly represents distinct object
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 3 =====
+248 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+parts. Wojtas and Cheny [54] integrated feature subset selection
+with model performance optimization, providing global insights
+into feature contributions and enhancing explainability through
+a stochastic optimization strategy. Pedapati et al.[61] introduced
+a technique for constructing globally interpretable models that
+closely align with local contrastive explanations derived from
+black-box models. Fong and V edaldi[42] proposed the Net2V ec
+framework, which maps semantic concepts to vector embed-
+dings aligned with neural network ﬁlter activations. Unlike local
+interpretability, global interpretability uncovers patterns and
+rules that deﬁne a network’s decision-making across the entire
+dataset, offering a comprehensive, systemic understanding of
+its behavior. Furthermore, it transcends individual predictions
+by revealing the fundamental principles learned by the net-
+work [24].
+B. Interpretability for Speaker-Related Tasks
+The topic of interpretability has recently gained attention
+in speaker-related tasks as well. Most existing studies have
+primarily focused on explaining closed-set speaker recognition
+tasks, while open-set speaker veriﬁcation tasks remain largely
+unexplored. For speaker recognition tasks, identifying the time-
+frequency bins within input features that are most critical to the
+network has become a popular approach for interpretability. For
+example, Li et al. [62] investigated the reliability of three Class
+Activation Map-based algorithms as visualization tools for deep
+speaker recognition models. Building on this, they utilized these
+methods to analyze the effects of data augmentation on model
+robustness [63] and to evaluate the contributions of various
+phoneme categories to deep speaker models [64]. Similarly,
+Zhang et al. [65] also used visualization as an interpretability
+tool to analyze speaker recognition models, using ﬁve attribution
+methods, including Integrated Gradients [32] and SHAP [37],t o
+visualize voiceprint features within the ECAPA-TDNN frame-
+work. Similarly, Thebaud et al. [66] leveraged Integrated Gradi-
+ents to assess the contribution of various phoneme categories
+to the performance of speaker veriﬁcation models. Beyond
+visualization, Ben-Amor et al. [67] proposed a novel explain-
+ability framework using the Binary-Attribute Likelihood Ratio
+(BA-LR), which decomposes speaker recognition scoring into
+interpretable sub-processes based on binary speech attributes.
+The work most closely related to the method we pursue[68] is
+the explainable attribute-based speaker veriﬁcation framework
+proposed by Wu et al. [69]. In our previous work [68],w ei n t r o -
+duced phonetic traits to represent the speaker-speciﬁc informa-
+tion embedded in each phoneme. However, these traits were uti-
+lized passively to explain the speaker network rather than being
+directly involved in the prediction process. This approach may
+lead to a gap in faithfulness between the provided explanations
+and the actual working mechanism. In [69], the authors adopt a
+two-stage pipeline leveraging Concept Bottleneck Models [52]
+to integrate explainability directly into the speaker veriﬁcation
+process. However, their system’s performance is limited by a
+small set of attributes that lack generalization, resulting in a
+signiﬁcant compromise of accuracy. It is worth noting that most
+existing interpretability studies for speaker-related tasks adopt
+passive and local interpretability methods. While these methods
+are effective in explaining speciﬁc predictions, they often fail
+to provide insights into the overall decision-making logic of the
+model. Additionally, while visualization tools have proven ef-
+fective for analyzing closed-set tasks, their applicability remains
+limited when it comes to open-set tasks like speaker veriﬁcation,
+where the ability to generalize to unseen speakers is critical.
+III. M
+ETHODOLOGY
+We introduce a novel interpretability framework designed to
+provide both global and local insights into the decision-making
+process of speaker veriﬁcation. Fig. 1 shows the overall archi-
+tecture of our proposed PhiNet, which is composed of three key
+components: the phonetic trait extractor, trait-level comparison
+layer, and decision layer.
+A. V eriﬁcation With Phonetic Interpretability
+Our PhiNet performs speaker veriﬁcation by comparing the
+enrollment and test utterance to generate a score that quantiﬁes
+the similarity between the speakers of these two utterances.
+Let’s assume a phonetic inventory of I phonemes. For a pair
+of utterances, the phonetic trait extractor generates a set of I
+phonetic traits, denoted as E = {ei}I
+i=1 and T = {ti}I
+i=1 for
+the pair. Eachei and ti captures the speaker-speciﬁc information
+associated with phoneme i in an utterance.
+In the phonetic trait comparison layer, we compute the pho-
+netic scoresi for each phoneme i based on the cosine similarity
+between ei and ti. This score quantiﬁes the similarity of speaker
+information for phoneme i across the two utterances.
+Considering that the ability of phonemes varies in terms of
+speaker characterization, higher weights should be assigned to
+phonemes that are more discriminative. In this way, phonetic
+score for these high-weight phonemes dominates the ﬁnal score.
+Conversely, phonemes that contribute less to speaker identiﬁca-
+tion are assigned lower weights, thereby reducing their inﬂuence
+on the ﬁnal score. The weight, quantiﬁed and denoted as w
+i,i s
+jointly learned with our network. The ﬁnal score for these two
+utterances is computed as the weighted average of si, where the
+weights are given by the wi.
+This process interprets veriﬁcation as a comparison of speaker
+information within each phonetic segment, allowing users to
+examine the spectrograms of speciﬁc phonetic segments as
+evidence. Additionally, w
+i, serves as a global interpretability
+factor, which reﬂects the potential cognitive bias of the model.
+The phonetic weight allows users to understand the model’s
+reliance on each phoneme, providing transparency to check if
+the model works reasonably.
+B. Architecture
+1) Phonetic Trait Extractor: A ss h o w ni nF i g .2, the phonetic
+trait extractor consists of two main components: frame-level
+layers and phonetic-level layers, creating a ﬁne-to-coarse hier-
+archical structure. Given that frame-level feature extractors are
+commonly used in speaker veriﬁcation networks, without loss of
+generality, we adopt the frame-level layers in ECAPA-TDNN to
+generateD-dimensional frame-level feature. Aligned with pho-
+netic boundaries provided by a pre-trained phoneme recognizer
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 4 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 249
+Fig. 1. Block diagram of the proposed framework for speaker veriﬁcation with phonetic interpretability.
+Fig. 2. Block diagram of the phonetic trait extractor.
+in textless mode [70], frame-level features are then passed to
+the phonetic-level layer. Using these phonetic boundaries, we
+calculate the average of frame-level features within phoneme
+i segment. This averaged representation is treated as the pho-
+netic trait, which we consider to capture the speaker-speciﬁc
+characteristics associated with phoneme i. For phonemes that
+do not appear in a given utterance, the associated phonetic trait
+is set to 0 for the absent phoneme i. This design is consistent
+with our prior work [68], we invite readers to consult the full
+paper and accompanying code 1 for a deeper understanding of
+the implementation.
+2) Trait Level Comparison: We compute the cosine similar-
+ity of each pair of(ei, ti). Due to adapting the frame-level layers
+of ECAPA-TDNN, the extracted phonetic traits are constrained
+to be nonnegative, making the resulting cosine similarity fall
+within the range [0, 1]. A transformation function is applied
+on the cosine similarity, which spans the result into range of
+[−∞, +∞]:
+di = ei · ti
+∥ei∥∥ti∥, (1)
+si = f2
+(
+φ
+(
+f1(di)
+))
+·di, (2)
+wheref1 andf2 are linear layers with an intermediate dimension
+c and f2 has no bias term. Speciﬁcally, f1 : R1 → Rc, and f2 :
+1https://github.com/mmmmayi/ExPO
+Fig. 3. Illustration of two conditions of adjusting phonetic scores based on
+phoneme distinctiveness. The top ﬁgure shows the adjustment when the phonetic
+score is closer toa, while the bottom ﬁgure depicts the adjustment when the score
+is closer tob. Here,a andb represent the scores for completely different speakers
+and the same speaker, respectively.
+Rc → R1, wherec controls the dimension of the mapping vector.
+Both f1 and f2 are shared across all phoneme. φis the Tanh
+activation function.
+3) Decision Layer: In the decision layer, we generate the ﬁ-
+nal score using [s1,s 2,...,s I ] and [w1,w 2,...,w I ]. The weight
+wi is designed to amplify the contribution of si if phoneme i
+is distinctive for speaker veriﬁcation, otherwise to reduce the
+contribution of si. This effect is illustrated in Fig. 3. Con-
+sider an example where a represents the similarity score for
+completely different speakers and b represents the score for
+identical speakers, with the constrains a<b and si ∈[a,b ].
+We assume that the midpoint between a and b serves as the
+threshold. If si is closer to a, the trial is classiﬁed as involving
+different speakers. Conversely, it is considered to originate from
+the same speaker. When si is closer to a before adjustment
+and phoneme i is distinctive, wi should adjust si shift further
+toward to a. Conversely, for a non-distinctive phoneme i,T h e
+weighted si should have a larger distance to a than before. It’s
+worth to mention that even for a non-distinctive phoneme i,t h e
+adjustment should not contradict the conclusion derived from the
+originalsi. In other words, if|si −a|≤| si −b| before applying
+wi, this relationship should hold true after adjustment.
+A straightforward approach to implement this functionality is
+to ensure si ∈R andwi ∈[0, 1], while assuming a threshold of
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 5 =====
+250 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+0 for distinguishing between target and non-target trials. After
+applying min-max normalization to a learnable vector ˆw of size
+I × 1, we obtain w, which serves as the phonetic weights:
+w = ˆw −min( ˆw)
+max( ˆw)−min( ˆw)+ ϵ, (3)
+where ϵ represents an arbitrarily small positive number.
+The element of w, denoted as wi, is used in the computation
+of the prediction score y:
+y = φ
+(
+1∑I
+i [I (ei ̸= 0∧ti ̸= 0)·wi]
+I∑
+i=1
+wisi
+)
+, (4)
+where∧represents the logical AND operator.I(·) is the indicator
+function, having 1 if the condition is true and 0 otherwise. w is
+optimized jointly with the network during training, allowing the
+model to learn the relative distinctiveness of each phoneme for
+accurate speaker veriﬁcation.
+C. Training Scheme
+We have discussed the process above where only one pair of
+utterances are compared. In this section, we describe the training
+scheme with K pair of utterances fed into the model as a batch.
+Speciﬁcally, we randomly selectedK speakers, and each speaker
+contributes two randomly selected utterances. We viewed these
+two utterances as enrollment and test utterance respectively to
+simulate the inference process.
+Given a batch of utterances, the phonetic trait for each speaker
+is denoted as E
+k = {ei
+k}I
+i=1 and T k = {ti
+k}I
+i=1 respectively,
+with k =1 , 2,...,K . The score for enrollment utterance from
+the speakerk and test utterance from the speaker j is denoted as
+ykj .
+In this way, the network is expected to derive a high value
+for ykj if k = j, otherwise, low value for ykj . Based on this
+hypothesis, we propose the veriﬁcation loss Lveri :
+Lveri = − 1
+K
+K∑
+k=1
+log exp(ykk )∑K
+j=1 exp(ykj )
+. (5)
+The Lveri is applied on each enrollment utterance in this batch
+and the model is forced to identify the test utterance from the
+same speaker.
+We also propose the phonetic trait lossLpho to strengthen the
+trait consistency for the same speaker while discriminates the
+traits between different speakers:
+Lpho = α
+N1
+I∑
+i=1
+K∑
+k=1
+I(ei
+k ̸= 0∧ti
+k ̸= 0)||ei
+k −ti
+k||2
+− β
+N2
+I∑
+i=1
+K∑
+k=1
+min
+j̸=k
+I(ei
+k ̸= 0∧ti
+j ̸= 0)||ei
+k −ti
+j||2, (6)
+N1 = ∑I
+i=1
+∑K
+k=1 I(ei
+k ̸= 0∧ti
+k ̸= 0) and N2 = ∑I
+i=1∑K
+k=1 I(ei
+k ̸= 0∧ti
+j ̸= 0) are two denominators. α and β
+are hyper-parameters to balance the loss for inter-speaker and
+intra-speaker trait. The ﬁrst term of (6) enforces the consistency
+of phonetic traits between matched pairs ( ei
+k, ti
+k) for the same
+phoneme, while the second term maximizes the dissimilarity
+between ei
+k and its most similar unmatched counterpart ti
+k,
+retaining only the smallest distance among unmatched pairs.
+The model is optimized by Lveri and Lpho simultaneously,
+and the total loss is deﬁned as
+Lall = γLveri +Lpho, (7)
+whereγis the balancing weight for two loss values.
+IV . EXPERIMENTS
+A. Dataset
+Our experiments are carried out on the V oxCeleb 1 [71],
+V oxCeleb 2 [72], the Speaker In the Wild (SITW) [73], and
+LibriSpeech [74].
+1) V oxCeleb 1: V oxCeleb 1 is a large-scale audio-visual
+dataset widely used for speaker recognition and veriﬁcation
+tasks. It contains 153,516 utterances collected from 1,251 speak-
+ers, extracted from Y ouTube videos. V oxCeleb 1 is collected un-
+der real-world conditions and includes variations in age, accent,
+gender, and language. The dataset is divided into training set
+and test set, and three trial lists, including V ox1-O, V ox1-E and
+V ox1-H, are provided. The training set consists of audio data
+from 1,211 speakers, containing more than 148,642 utterances,
+and the test set contains 4,874 utterances from 40 speakers. The
+trial list V ox1-O is generated from the test set, while V ox1-E and
+V ox1-H are drawn from the training set. We use the training set
+of V oxCeleb1 to ﬁne-tune the hyper-parameters and V ox1-O to
+evaluate the system in ablation experiments.
+2) V oxCeleb 2: V oxCeleb 2 is an extension of the V oxCeleb 1
+dataset, providing a larger and more diverse collection of audio-
+visual data for speaker recognition research. It contains over 1
+million utterances from 6,112 speakers. We name the training set
+of V oxCeleb2 as “V ox2” in following sections, which consists
+of 5,994 speakers and 1,092,009 utterances.
+3) SITW: Similarly to V oxCeleb 1 and 2, SITW is a large,
+publicly available dataset designed to reﬂect real-world condi-
+tions in speaker recognition research. The SITW dataset contains
+audio recordings of 299 speakers, with approximately 6,000 ut-
+terances collected from open-source media [73]. To evaluate our
+system, we use the the ofﬁcial trial lists of “core-core” condition
+from the evaluation parts of the dataset (SITW-eval), which con-
+tain 721,788 trials, respectively. Unlike the V oxCeleb1-O/E/H
+test sets, which have a balanced number of target and non-target
+trials, SITW exhibits a signiﬁcantly imbalanced distribution.
+Speciﬁcally, the counts for target and non-target trials in SITW-
+eval are 3,658 and 718,130 respectively.
+4) LibriSpeech: The LibriSpeech is a widely used corpus of
+read English speech. It consists of approximately 1,000 hours
+of speech data derived from audiobooks in the public domain.
+The dataset includes recordings from a wide range of speakers,
+covering various ages, accents, and genders. LibriSpeech also
+provides text transcriptions for all the recordings. Our phoneme
+recognizer is pre-trained on the LibriSpeech, with the phonetic
+inventory containing 39 units in the CMU phoneme set [75] and
+a non-verbal label [N-V]. Therefore, I =4 0 in our paper.
+We also use the LibriSpeech as one of our test set to evaluate
+the generalization ability of our model. Since there is no ofﬁcial
+trial list for LibriSpeech, we randomly generated one target and
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 6 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 251
+one non-target trial for each utterance in the train-clean-100,
+train-clean-360, dev-clean, and test-clean subsets, resulting in a
+total of 275,752 trials.
+B. Experimental Setup
+Our system is implemented using WeSpeaker toolkit[76].T h e
+feature is an 80-dimensional log-mel ﬁlterbank (FBank) with a
+window size of 400 and a hop length of 160. The frequency
+range is from 20 Hz to 7600 Hz. We use ECAPA-TDNN [8]
+as the backbone and follow the conﬁguration of “ecapa-tdnn” in
+WeSpeaker to train our model. Following the setting of ECAPA-
+TDNN, D is set as 1,536. We increase the number of epochs
+to 13,650 so that the number of samples used for training is
+approximately equal to the toolkit settings. Our model is trained
+with Stochastic Gradient Descent (SGD) as the optimizer. The
+initial learning rate is set to 0.1 and exponentially decays to
+0.00005. To ensure the learning rate aligns with the baseline
+conﬁguration, γis set to 0.5. The MUSAN dataset (babble,
+noise, music) [77] and the RIR dataset (reverb) [78] are used
+for augmentation. The samples are subjected to 0.6 probability
+of not being augmented, 0.2 probability of adding noise, and 0.2
+probability of adding reverberation during training. The duration
+of each training sample is set to 3 seconds, withK andc assigned
+values of 128 and 2, respectively, unless stated otherwise.
+C. Baseline Setting
+The ECAPA-TDNN serves as the black-box model for per-
+formance comparison. For the baseline setup, we ﬁrst adopt the
+pre-trained ECAPA-TDNN released in the open-source project
+wespeaker,2 which matches the same model conﬁguration as the
+one used in our experiments.
+To further eliminate the possible confounding effects brought
+by different loss functions and pooling mechanisms, we addi-
+tionally reproduced an ECAPA-TDNN model trained following
+exactly the same training pipeline as ours. Speciﬁcally, to ensure
+a fair comparison between the ECAPA-TDNN and our proposed
+model, we adopted a metric learning approach for training
+ECAPA-TDNN, speciﬁcally utilizing the Angular Prototypical
+Loss function [79]. In addition, there are two further differences
+between the reproduced ECAPA-TDNN and the released
+pre-trained model. To avoid introducing phoneme distortion
+and ensure that augmentation does not become an additional
+confounding variable, we excluded speed perturbation from
+the reproduced model. Furthermore, we employed temporal
+statistics pooling instead of the attentive statistics pooling used
+in the pre-trained model, so as to minimize the contribution
+of attention-based pooling biases. These adjustments allow
+the comparison to be primarily focused on the difference
+between an interpretable system and a black-box system, rather
+than differences arising from augmentation choices or pooling
+mechanisms. To facilitate reproducibility, we release our code at
+https://github.com/mmmmayi/LightWespeaker_Prototypical.
+2https://wenet.org.cn/downloads?models=wespeaker&version=voxceleb_
+ECAPA512.zip
+D. Evaluation Metric
+1) Evaluating Speaker V eriﬁcation Performance: We report
+the speaker veriﬁcation performance in term of equal error rate
+(EER) and minimum detection cost function (minDCF) with
+ptarget =0 .05.
+2) Evaluating Interpretability: Our approach of global in-
+terpretability involves ranking the individual contributions of
+phonetic traits to the ﬁnal prediction score. To verify the reli-
+ability of this ranking, we perform the leave- ith-phoneme-out
+experiments on the input spectrogram. Speciﬁcally, following
+this ranking, we sequentially remove the segments within each
+phoneme from the input spectrogram. The hypothesis is that
+if a phoneme signiﬁcantly inﬂuences prediction, its removal
+will result in a substantial decrease in performance, whereas the
+removal of phonemes with lower rankings will yield negligible
+changes. This performance variation due to segment removal
+serves as a qualitative validation of the system’s global inter-
+pretability.
+Local interpretability relies on the hypothesis that each pho-
+netic trait encodes speaker information speciﬁc within its corre-
+sponding phonetic segments. To evaluate the faithfulness of this
+hypothesis, we employ a similar evaluation method to that used
+for global interpretability. Instead of removing speciﬁc phonetic
+segments from the spectrogram, we exclude the corresponding
+phonetic traits during the decision process. If a phonetic trait
+truly represents speaker information localized to speciﬁc seg-
+ments, the performance impact of removing the trait should
+closely align with that of removing the corresponding spec-
+trogram segments. To quantify this faithfulness, we calculate
+the mean absolute difference between the performance changes
+caused by these two types of removal across all phonemes,
+deﬁning as the ﬁdelity score. A lower ﬁdelity score reﬂects better
+alignment, indicating that phonetic traits accurately represent
+localized speaker information.
+V. R ESULTS
+A. Local Interpretation
+In this section, we discuss the local interpretation, focusing on
+trial-level explanations provided by the proposed model. Fig. 4
+offers a detailed visualization of the model’s decision-making
+process for both non-target and target trials. It illustrates
+the spectrograms of phonetic segments from enrollment
+and test utterances, alongside their pairwise comparisons,
+which are represented by the original cosine similarity, the
+phonetic similarity (si) scaled to the range [−∞, +∞], and the
+corresponding phonetic weight (wi).
+For the non-target trial, the phoneme “S”, “N”, “AH” and
+“AE” demonstrates a relatively low cosine similarity, leading to
+a low negative phonetic score, indicating a strong dissimilar-
+ity in speaker-speciﬁc information between the corresponding
+segments in the enrollment and test utterances. Notably, “N”
+is assigned the highest phonetic weight of 1.00, making it a
+inﬂuential factor in determining the ﬁnal score ( −0.975). In
+contrast, the phoneme “F” exhibits a higher phonetic score
+of 1.41, but its impact on the ﬁnal decision is signiﬁcantly
+diminished due to its much lower phonetic weight of 0.01.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 7 =====
+252 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+Fig. 4. Visualization of the decision making process for a non-target trial (top) and a target trial (bottom). Phonetic boundary are marked by dotted l ines in
+enrollment and test utterances. “Er. Seg” and “Te. Seg” show the segments within each phoneme in enrollment and test utterance. The results shown are o btained
+using the model trained under System (10) in Table II.
+Fig. 5. Phonetic weight distribution across different phonemes. The results shown are obtained using the model trained under System (10) in Table II.
+The target trial achieves a higher ﬁnal score of 0.997. In this
+case, the phoneme “N” demonstrates a high similarity score
+with phonetic score as 5.44, supported by a substantial phonetic
+weight 1.00, strongly driving the decision towards a positive
+match. In contrast, some phonemes, such as “HH”, exhibit a
+much lower similarity score of −2.22, but it contribute almost
+nothing to the ﬁnal outcome due to their negligible weight.
+This detailed analysis provides a ﬁne-grained understanding
+of the model’s decision-making process at the phonetic level. By
+emphasizing the interaction between phonetic similarities and
+their corresponding weights, the ﬁgure illustrates how individual
+phonetic segments collectively inﬂuence the speaker veriﬁcation
+outcomes. Additionally, with the inclusion of phoneme bound-
+aries, users can further explore the model’s behavior by checking
+or listening to speciﬁc segments within a particular phoneme of
+interest, enabling deeper insights into the relationship between
+acoustic features and model predictions.
+B. Global Interpretation
+The phonetic weights reﬂect the overall decision logic of the
+model by indicating how much each phonetic score contributes
+to the ﬁnal score. In Fig. 5, we present the rank of weights for
+each phoneme. Phonemes with higher weights, such as “N”,
+“S”, and “M” signiﬁcantly inﬂuence the model’s predictions in
+the decision-making process. Conversely, phonemes like “B”,
+“P”, and “HH” receive minimal weight, suggesting they have a
+negligible impact on the model’s outcomes. The weight distri-
+bution reveals that certain phonemes play a more prominent role
+in shaping the prediction score, offering valuable insights into
+the model’s decision-making criteria.
+It is worth mentioning that this global interpretation aligns
+with human perception in FSC [80], [81], [82], as nasals and
+vowels (e.g., “N”, “M”, and “A Y”) are widely recognized as
+more discriminative for speaker veriﬁcation tasks. Addition-
+ally, the discriminative power of fricatives remains a subject
+of debate [80], [83], [84]. Our results reﬂect this observation:
+fricatives such as “S” and “Z” show strong discriminative power,
+while other fricatives, like “HH” and “F”, receive lower weights,
+indicating limited inﬂuence.
+C. Impact of Sample Durations
+As a crucial hyperparameter, the duration of training samples
+signiﬁcantly impacts the model’s performance especially in
+short-duration test conditions. As shown in TableI, while models
+trained with sample durations ranging from 2 to 5 seconds
+exhibit comparable performance on the full-duration test set,
+a notable performance drop occurs for the model trained with
+5-second samples when evaluated on a shortened 2-second test
+set. This drop is commonly attributed to the model’s limited
+generalization ability, caused by the mismatch between training
+samples and test samples. Using our PhiNET, we provide a
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 8 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 253
+Fig. 6. The phonetic weight for models trained with various duration. The conﬁguration of these models are same with System (4), (6), (10), (12) and (14 )i n
+Table II respectively.
+TABLE I
+SPEAKER VERIFICA TIONPERFORMANCE BETWEEN MODELS TRAINED ON
+SAMPLES OF DIFFERENT DURA TIONS.T HE SYSTEMS ARE TRAINED UNDER
+SYSTEM (4), (6), (10), (12) AND (14) IN TABLE II, AND EV ALUA TED ON
+VOX1-O WITH THE WHOLE TEST SAMPLE (“WHOLE UTT”), THE FIRST 5
+SECONDS (“5 S”), AND THE FIRST 2S ECONDS (“2 S”). “MIX”I NDICA TESTHA T
+THE TRAINING DURA TION IN EACH MINI-BAT C H I SRANDOML YSELECTED
+FROM 1 TO 5S ECONDS.
+deep explanations about this mismatch by analyzing the model’s
+potential cognitive biases.
+Fig. 6 visualizes the phonetic weights of models trained with
+different duration. Across all conﬁgurations, the ranking of
+phonetic weights remains relatively similar, with phonemes like
+“N”, “S”, and “M” consistently contributing the most. However,
+with longer training durations (e.g. with 5 seconds), the model
+relies heavily on a few dominant phonemes to make decisions.
+In contrast, models trained on shorter samples, e.g. with 1 s,
+exhibit a more evenly distributed weight pattern. This broader
+distribution suggests that model relies on a wider range of
+phonemes to compensate for the limited number of phonemes
+present in shorter segments.
+This observation suggests that the duration plays a role in
+terms of phonetic contributions to the speaker veriﬁcation deci-
+sions. Enforcing equal attention to all phonemes may lead to a
+loss of the model’s capacity to capture speaker-relevant infor-
+mation embedded in more informative phonemes. Conversely,
+excessive dependence on phonetic features can undermine the
+model’s robustness in short-duration scenarios, limiting its sta-
+bility and generalization.
+We further investigated the effect of training with samples of
+mixed durations. Speciﬁcally, for each mini-batch, the duration
+of the training utterances was randomly selected from 1 to
+5 seconds. Under this training scheme, the results show that
+the phonetic weights converge to 0.5 for almost all phonemes,
+indicating that the model fails to learn meaningful distinctions
+among phonemes for speaker recognition. We hypothesize that
+each phoneme may have a distinct optimal weight for different
+training durations. When the duration varies across training
+samples, the model is exposed to implicit label inconsistency,
+which confuses the learning process and prevents it from cap-
+turing phoneme-speciﬁc discriminative patterns. As a result,
+its performance on the full test utterances and the 5-second
+segments is close to the worst case, as shown in Table I. When
+evaluated with 2-second test samples, the mixed-duration model
+performs better than models trained with ﬁxed durations of 4
+or 5 seconds, but still falls short of the best result achieved
+with 2-second training samples. This suggests that when the
+test utterance contains a rich variety of phonemes, the ability
+to model phoneme-speciﬁc discriminative patterns is crucial for
+achieving high accuracy. In contrast, for short test utterances, the
+importance of this ability diminishes as the phonemic diversity
+decreases.
+D. Interpretability Evaluation
+1) V ariation of Phonetic Evidence: As introduced in Sec-
+tion IV -D, we perform leave- ith-phoneme-out experiments to
+evaluate the performance of global interpretability. Experiments
+are conducted on multiple test sets and reported in Fig. 7.
+Despite ﬂuctuations in individual test sets, the overall trend is
+consistently observed across all test sets.
+As expected, performance drops noticeably when high-
+weighted phonemes are removed. This further conﬁrms that
+phonemes with higher weights play a more crucial role in the
+ﬁnal decision. The ﬁndings also show that the proposed global
+interpretation method aligns well with human decision process.
+2) Faithfulness of Phonetic Trait: The results in Fig. 7 re-
+veal a notable gap between the performance impact of trait
+removal and spectrogram segment removal. We hypothesize
+that this gap arises from the expanded receptive ﬁeld in the
+convolutional-based phonetic trait extractor. The stacked con-
+volutional layers increase the receptive ﬁeld beyond the given
+phonetic boundaries, capturing adjacent frames. This expansion
+likely causes the extracted traits to encode speaker information
+across multiple phonemes, compromising the faithfulness of the
+system’s local interpretability. Nevertheless, the overall trend
+across multiple test sets remains consistent and closely aligns
+with the trend observed from spectrogram segment removal.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 9 =====
+254 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+Fig. 7. Results of leave- ith-phoneme-out experiments on SITW-eval, V ox1-O and LibriSpeech. Leave- ith-phoneme-out experiments conducted in input
+spectrogram are shown as “spec-sitw-eval”, “spec-vox1-O” and “spec-libriSpeech”. Correspondingly, “trait” means the phonetic trait of each phon eme is left
+out and ‘baseline’ shows the EER of the network without leaving anything out.
+TABLE II
+PERFORMANCE IN A COMPARA TIVESTUDY BETWEEN HYPER-PARAMETERS
+USED IN NETWORK TRAINING.T HE FIDELITY SCORE QUANTIFIES THE
+ALIGNMENT BETWEEN PHONETIC TRAIT-BASED AND SPECTROGRAM-BASED
+LEA VE-ONE-OUT SETTING.L OWER VALUES INDICA TEBETTER FAITHFULNESS.
+ALL THE NETWORKS ARE TRAINED ON VOXCELEB1. “DUR”R EPRESENTS THE
+DURA TION OF SECONDS OF TRAINING SAMPLE.“ α” AND “β”R EPRESENT THE
+WEIGHTS ASSIGNED TO DIFFERENT COMPONENTS IN THE LOSS FUNCTION.
+THE BOLDED VALUES INDICA TE THE OPTIMAL CONFIGURA TIONS.
+This indicates that although convolutional networks expand
+the receptive ﬁeld, the relative alignment between the output
+features and the spectrogram is preserved, allowing the model
+to retain local interpretability.
+Table II presents the ﬁdelity scores for systems trained under
+different conﬁgurations, as deﬁned in Section IV -Das the mean
+absolute difference between the performance changes caused
+by these two types of removals across all phonemes. These
+results suggest that even when the model architecture remains
+unchanged, adjustments to the training conﬁguration can en-
+hance faithfulness. A more detailed analysis of this observation
+will be provided in the next section.
+3) Example Visualization: To provide a more intuitive view
+of how phonetic traits are either distinct or entangled, we present
+Fig. 8. Similarity heatmaps between the individual phonetic traits and the
+centric of each phonetic traits for two speakers in the test set. The results are
+obtained using the model trained under System (10) in Table II. The phoneme
+order in the heatmaps (top-to-bottom and left-to-right) follows the same order
+as in Fig 5. Brighter points indicate higher cosine similarity.
+the similarity heatmaps in Fig. 8. For each speaker in the test
+set of V oxCeleb1, we ﬁrst compute the centroid of the i-th
+phonetic trait as the average of all i-th traits extracted from
+that speaker’s utterances. We then calculate the average cosine
+similarity between each phonetic trait and these centroids. The
+higher cosine similarity indicates the phonetic trait is closer to
+the centric. We observe that the diagonal elements in Fig. 8
+are noticeably brighter than others, indicating that each pho-
+netic trait is closer to its own centroid than to those of other
+phonemes. At the same time, we notice that in the lower-right
+region of the heatmap, the diagonal values tend to be less
+contrasted with their neighboring entries. This suggests that
+the traits corresponding to these phonemes are more easily
+entangled with others, which is consistent with our previous con-
+clusion that these phonemes are less discriminative for speaker
+veriﬁcation.
+E. Ablation Study
+In this section, we compare the system trained on V ox-
+Celeb1 with different conﬁguration. The performance of speaker
+veriﬁcation and interpretability is evaluated on V ox1-O. For
+comparison, we also show the performance of “black-box”
+model ECAPA-TDNN in System (1) and (2) in Table II. Since
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 10 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 255
+the setting of 2-second training sample is commonly used for
+black-box speaker model training [76], we present results for
+ECAPA-TDNN trained with 2 and 3 seconds, respectively, for
+a fair comparison.
+1) Duration of Training Samples: To investigate the impact
+of training sample duration on system, we compare System
+(4), (6), (10), (12), and (14) in Table II, where the sample
+duration increases progressively from 1 to 5 seconds. It can be
+observed that the system achieves optimal speaker veriﬁcation
+performance with 3-second samples (System (10)), with both
+the EER and minDCF reaching their lowest values. Beyond 3
+seconds, performance begins to degrade as the duration contin-
+ues to increase. Meanwhile, as the duration increases, the inter-
+pretability performance, measured by the Fidelity score, shows a
+continuous upward trend, indicating that the model becomes less
+faithful. The Fidelity score increases from 0.053 for 1-second
+samples (System (4)) to 0.113 for 5-second samples (System
+(14)). This suggests that longer training sample durations result
+in weaker alignment between the phonetic traits and their corre-
+sponding spectrogram regions, thereby reducing the faithfulness
+of the model’s local interpretability. The speaker veriﬁcation
+performance and Fidelity scores indicates a clear trade-off:
+longer durations improve speaker veriﬁcation accuracy up to a
+point but compromise local interpretability. The similar trend
+is observed for systems trained exclusively with the loss of
+L
+veri (Systems (3), (5), (7), (11), and (13)), where performance
+improves up to 3 seconds before deteriorating with longer du-
+rations. Meanwhile, Fidelity score increases progressively from
+0.048 to 0.133. We hypothesize that this behavior is due to the
+varying amount of phonetic information present in samples of
+different durations. Shorter samples may lack sufﬁcient phonetic
+diversity to reliably distinguish between speakers, but the limited
+number of phonemes allows the system to explore each phoneme
+thoroughly, which beneﬁts interpretability. Conversely, longer
+training samples may enhance the phonetic information encoded
+in the phonetic traits due to expanding receptive ﬁeld, enabling
+the model to capture more general speaker characteristics within
+these traits.
+2) Impact of L
+pho: In this section, we analyze the impact
+of incorporating Lpho into the training process. Models trained
+solely with Lveri correspond to Systems (3), (5), (7), (11), and
+(13) in Table II, each evaluated with different training sample
+durations. In contrast, Systems (4), (6), (10), (12), and (14)
+integrate L
+pho alongside Lveri using the same weighting pa-
+rameters αand β. Regarding interpretability, as measured by
+the Fidelity score, the effect of Lpho remains inconsistent. For
+training durations of 1 and 2 seconds, models incorporatingLpho
+show a slight increase in Fidelity scores. However, for longer
+durations of 3, 4, and 5 seconds, Fidelity scores tend to decrease
+whenL
+pho is applied.
+Since Lveri may converge faster for longer training samples
+because the model is easier to distinguish between speakers in
+longer utterances, we further explore the effect of increasing α
+and βfor training durations of 5 seconds. The corresponding
+results compared with conﬁguration of 3 seconds are presented
+in Table III. These ﬁndings suggest that while the weighting
+of Lpho requires careful tuning for different conﬁgurations, its
+TABLE III
+IMPACT OF DIFFERENT THE WEIGHT OF αAND βON MODEL PERFORMANCE
+DURING TRAINING
+TABLE IV
+PERFORMANCE EVA L U AT I O N O FMODELS TRAINED WITH DIFFERENT
+DIMENSION OF MAPPING VECTOR. c IS THE DIMENSION OF THE MAPPING
+VECTOR IN (2).
+incorporation has the potential to enhance overall system per-
+formance by leveraging phonetic information more effectively.
+3) Weights in Loss Function: We ﬁnetune the weight inLpho
+u s i n gaﬁ x e dαand adjust βin Systems (8), (9), and (10) of
+Table II. The EER, minDCF, and Fidelity score for these three
+systems are similar. However, we observed that the system be-
+comes prone to crashing during training when we try a biggerβ.
+Despite this, we believe that balancing inter-speaker differences
+and intra-speaker consistency within the same phonemes is a
+worthwhile direction and plan to explore it further in future work.
+In the following sections, unless otherwise speciﬁed, we assume
+thatαis 0.001 and βis 0.0015 by default.
+4) Dimension of Mapping V ector: We map the raw co-
+sine similarity of each pair of phonetic traits to the range of
+[−∞, +∞] in (2). To ﬁnetune the dimension of the mapping
+vector, we set the dimensionc to values from 1 to 4, as shown in
+Table IV. The results indicate that speaker veriﬁcation perfor-
+mance initially improves with increasingc, but begins to degrade
+when c is set to 4. In terms of Fidelity score, we observe a
+decreasing trend asc increases. Balancing both performance and
+faithfulness, we select c as 2 for our subsequent experiments.
+5) Augmentation During Training: We conducted experi-
+ments to evaluate the impact of data augmentation for different
+training conﬁguration. The systems trained with and without
+augmentation methods such as adding noise and reverberation
+are shown in Table V. The results reveal that the absence of
+augmentation leads to a noticeable decline in both speaker
+veriﬁcation performance and faithfullness. This outcome aligns
+with our expectations, highlighting the crucial role of data aug-
+mentation in enhancing the robustness of the model. Moreover, it
+underscores that augmentation not only beneﬁts veriﬁcation ac-
+curacy but also plays a key role in maintaining the interpretability
+of our proposed speaker veriﬁcation system.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 11 =====
+256 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+TABLE V
+IMPACT OF DATA AUGMENTA TION ONMODEL PERFORMANCE DURING
+TRAINING
+TABLE VI
+PERFORMANCE EVA L U AT I O N O FMODELS TRAINED WITH DIFFERENT
+FUNCTION TO GENERA TEPHONETIC WEIGHTS
+6) Generation of Phonetic Importance Weight: In our set-
+tings, we use a trainable vector, normalized by min-max scaling,
+as the weight for each phonetic trait in(3). To explore alternative
+methods, we replaced min-max normalization with other func-
+tions that map the trainable vector to non-negative values. These
+functions include the Sigmoid function, min-shift normalization,
+and the ReLU function. For the Sigmoid and ReLU functions,
+we apply the standard Sigmoid and ReLU operations directly on
+ˆw. For min-shift normalization, w is generated by subtracting
+the minimum value from ˆw as w = ˆw −min( ˆw). The results
+are shown in Table VI.
+An interesting observation from these systems is that when
+the weights are constrained strictly within the range of 0 to 1,
+weight generated with min-max scaling outperforms Sigmoid
+function. While when the weights are only constrained to be
+non-negative, min-shift function surpasses ReLU function. We
+assume that both min-max and min-shift produce weights that
+take into account the relationships between all phonetic weights.
+In contrast, the Sigmoid and ReLU functions generate outputs
+based solely on individual phonetic weightings. This observation
+leads us to hypothesize that speaker veriﬁcation is a dynamic
+process in which the importance of a speciﬁc phoneme is
+context-dependent and dynamically related to the weighting of
+other phonemes.
+F . Comparative Study Across Multiple Datasets
+We present the performance of models trained on larger
+datasets . As expected, speaker veriﬁcation performance im-
+proves with more training samples. However, when evaluat-
+ing interpretability using ﬁdelity score, we observe that an
+increased number of training samples does not yield beneﬁts to
+faithfulness. Especially for difﬁcult test sets that may contain
+background noise, such as “V ox1-H” and “SITW-eval”, the
+faithfulness of the model degrades signiﬁcantly as the training
+dataset grows. We hypothesize two potential reasons for this
+behavior. First, it may be attributed to the robustness of the
+phoneme boundaries provided by the phoneme recognizer. For
+challenging trials, the phoneme recognizer struggles to provide
+accurate phoneme boundaries. Second, as the receptive ﬁeld of
+the phonetic trait extractor expands, phonetic trait main contains
+information extracted from adjacent frames. With the training
+set increase, the model becomes more effective at extracting
+speaker-discriminative features from adjacent frames. Conse-
+quently, when the phonetic traits of a speciﬁc phoneme are not
+particularly discriminative, the model may rely on features from
+adjacent frames, which could reduce the overall faithfulness. We
+believe this phenomenon may also reﬂect a tradeoff between
+interpretability and high performance for our model.of V ox2 in
+Table VII
+Compared to the black-box model, our model has a slightly
+smaller parameter size due to the absence of the utterance-level
+layer. We also observe that the performance of the released
+pre-trained ECAPA-TDNN is better than that of the reproduced
+model trained under our pipeline, indicating that the train-
+ing mechanism (including augmentation design, optimization
+method, and pooling strategy) has a non-negligible impact on
+the ﬁnal performance. While our model’s EER still exhibits a
+performance gap relative to the SOTA black-box model, the gap
+remains within a reasonable and acceptable range. Importantly,
+across multiple evaluation sets, our model consistently demon-
+strates strong generalization capability.
+We believe this performance difference does not solely arise
+from the model architecture itself, but also reﬂects the fact that
+interpretable speaker veriﬁcation models are still in the early
+stage of development, where dedicated training mechanisms
+tailored for interpretability have not yet been systematically
+explored. As a result, one promising future direction is to in-
+vestigate training strategies that are speciﬁcally designed for
+interpretable models, rather than directly inheriting training
+mechanisms developed for black-box models.
+As the ﬁrst study of self-interpretable speaker veriﬁcation,
+we acknowledge that several challenges remain. For instance,
+phoneme may not represent the optimal minimal unit in the
+context of speaker veriﬁcation. Considering the characteristic
+of this model, we believe that future research should focus on
+disentangling speaker identity from spoken content to further
+improve model performance. Another promising direction is to
+explore whether PhiNet can be adopted as a ﬁne-tuning step on
+top of strong black-box models (e.g., ECAPA-TDNN). Such a
+hybrid strategy may leverage the performance of state-of-the-
+art models while preserving the interpretability offered by our
+framework, which we leave for future investigation.
+VI. C
+ONCLUSION
+We study speaker veriﬁcation with phonetic interpretability
+while maintaining high accuracy. The technique allows users to
+automate the process of ﬁne-grained voice comparison, visualize
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 12 =====
+MA et al.: PHINET: SPEAKER VERIFICA TION WITH PHONETIC INTERPRETABILITY 257
+TABLE VII
+PERFORMANCE OF NETWORKS EV ALUA TED ON THEVOX1-O/E/H, SITW AND LIBRISPEECH.T HE SYSTEM IS TRAINED ON TRAINING SET OF VOXCELEB1 (‘VOX1’)
+AND TRAINING SET OF VOXCELEB2( “ VOX2”). “PRE-TRAINED”R EFERS TO THE PRE-TRAINED ECAPA-TDNN BASELINE RELEASED FROM WESPEAKER,W HILE
+“REPRODUCED”D ENOTES THE ECAPA-TDNN TRAINED WITH SAME STRA TEGY AS OUR MODEL.
+the phonetic trait, and identify each phoneme’s contribution
+to the ﬁnal decision. Experiment results show that our system
+achieves comparable accuracy while signiﬁcantly improving in-
+terpretability. These ﬁndings suggest that phoneme-based anal-
+ysis can be a promising direction for improving the transparency
+of speaker veriﬁcation systems.
+This work lays the groundwork for developing self-
+interpretable speaker veriﬁcation networks. We demonstrate the
+feasibility of generating meaningful explanations for speaker
+veriﬁcation decisions. Despite the challenges, this work marks
+a signiﬁcant step toward building systems that are not only ac-
+curate but also trustworthy and suitable for high-accountability
+applications.
+R
+EFERENCES
+[1] R. Auckenthaler, E. Parris, and M. Carey, “Improving a GMM speaker
+veriﬁcation system by phonetic weighting,” in Proc. IEEE Int. Conf.
+Acoustics, Speech, Signal Process., 1999, vol. 1, pp. 313–316.
+[2] P . Kenny, M. Mihoubi, and P . Dumouchel, “New map estimators for
+speaker recognition,” in Proc. Interspeech, 2003, pp. 2961–2964.
+[3] E. S. Parris and M. J. Carey, “Discriminative phonemes for speaker
+identiﬁcation,” in Proc. 3rd Int. Conf. Spoken Lang. Process. , 1994,
+pp. 1843–1846.
+[4] S. S. Kajarekar and H. Hermansky, “Speaker veriﬁcation based on broad
+phonetic categories,” in Proc. Speaker Lang. Recognit. Workshop , 2001,
+pp. 201–206.
+[5] N. Dehak, P . J. Kenny, R. Dehak, P . Dumouchel, and P . Ouellet, “Front-end
+factor analysis for speaker veriﬁcation,”IEEE Trans. Audio, Speech, Lang.
+Process., vol. 19, no. 4, pp. 788–798, May 2011.
+[6] D. Snyder, D. Garcia-Romero, G. Sell, D. Povey, and S. Khudan-
+pur, “X-vectors: Robust DNN embeddings for speaker recognition,” in
+Proc. 2018 IEEE Int. Conf. Acoust., Speech Signal Process. , 2018,
+pp. 5329–5333.
+[7] H. Zeinali, S. Wang, A. Silnova, P . Matˇ ejka, and O. Plchot, “But sys-
+tem description to voxceleb speaker recognition challenge 2019,” 2019,
+arXiv:1910.12592.
+[8] B. Desplanques, J. Thienpondt, and K. Demuynck, “ECAPA-
+TDNN: Emphasized channel attention, propagation and aggregation
+in TDNN based speaker veriﬁcation,” in Proc. Interspeech , 2020,
+pp. 3830–3834.
+[9] P . Foulkes and P . French, “Forensic speaker comparison: A linguistic–
+acoustic perspective,” in The Oxford Handbook of Language and Law .
+London, U.K.: Oxford Univ. Press, Mar. 2012, pp. 558–572.
+[10] F. Nolan, The Phonetic Bases of Speaker Recognition . Cambridge, U.K.:
+Cambridge Univ. Press, 1983.
+[11] G. S. Morrison and E. Enzinger, “Introduction to forensic voice com-
+parison,” in The Routledge Handbook of Phonetics , Evanston, IL, USA:
+Routledge, 2019, pp. 599–634.
+[12] F. Beritelli and A. Spadaccini, “The role of voice activity detection
+in forensic speaker veriﬁcation,” in Proc. 17th Int. Conf. Digit. Signal
+Process., 2011, pp. 1–6.
+[13] Y . Tian, L. He, M. Cai, W.-Q. Zhang, and J. Liu, “Deep neural net-
+works based speaker modeling at different levels of phonetic granular-
+ity,” in Proc. IEEE Int. Conf. Acoust., Speech Signal Process. , 2017,
+pp. 5440–5444.
+[14] K. S. G, T. C. Nagavi and P . Mahesha, “V oice comparison approaches
+for forensic application: A review,” in Proc. 3rd Int. Conf. Secure Cyber
+Comput. Commun., 2023, pp. 797–802.
+[15] H. Wang, S. Zheng, Y . Chen, L. Cheng, and Q. Chen, “CAM++: A fast and
+efﬁcient network for speaker veriﬁcation using context-aware masking,”
+in Proc. Interspeech, 2023, pp. 5301–5305.
+[16] A. B. Arrieta et al., “Explainable artiﬁcial intelligence (XAI): Concepts,
+taxonomies, opportunities and challenges toward responsible AI,” Inf.
+Fusion, vol. 58, pp. 82–115, 2020.
+[17] L. G. Kersta, “V oiceprint identiﬁcation,” Nature, vol. 196, no. 4861, 1962,
+Art. no. 1253.
+[18] R. H. Bolt, F. S. Cooper, E. E. David, P . B. Denes, J. M. Pickett, and K.
+N. Stevens, “Speaker identiﬁcation by speech spectrograms: Some further
+observations,” J. Acoust. Soc. America, vol. 54, no. 2, pp. 531–534, 1973.
+[19] H. Hollien, The Acoustics of Crime: The New Science of F orensic Phonet-
+ics. New Y ork, NY , USA: Springer, 2013.
+[20] P . Rose, F orensic Speaker Identiﬁcation. Boca Raton, FL, USA: CRC
+Press, 2002.
+[21] A. Hirson, P . French, and D. Howard, “Speech fundamental frequency over
+the telephone and face-to-face: Some implications for forensic phonetics
+1,” in Studies in General and English Phonetics , Evanston, IL, USA:
+Routledge, 2012, pp. 230–240.
+[22] T. Hudson, G. De Jong, K. McDougall, P . Harrison, and F. Nolan, “F0
+statistics for 100 young male speakers of Standard Southern British
+English,” in Proc. 16th Int. Congr . Phonetic Sci.
+, vol. 6, no. 10, 2007,
+pp. 1809–1812.
+[23] A. Braun, “Fundamental frequency: How speaker-speciﬁc is it?,” Beiträge
+zur Phonetik und Linguistik , vol. 64, pp. 9–23, 1995.
+[24] Y . Zhang, P . Tiˇno, A. Leonardis, and K. Tang, “A survey on neural network
+interpretability,” IEEE Trans. Emerg. Topics Comput. Intell., vol. 5, no. 5,
+pp. 726–742, Oct. 2021.
+[25] W. Saeed and C. Omlin, “Explainable AI (XAI): A systematic meta-
+survey of current challenges and future opportunities,”Knowl.-Based Syst.,
+vol. 263, 2023, Art. no. 110273.
+[26] Y . Wang and X. Wang, “Self-interpretable model with transformation
+equivariant interpretation,” in Proc. Adv. Neural Inf. Process. Syst., 2021,
+vol. 34, pp. 2359–2372.
+[27] D. Alvarez Melis and T. Jaakkola, “Towards robust interpretability with
+self-explaining neural networks,” in Proc. Adv. Neural Inf. Process. Syst.,
+vol. 31, 2018.
+[28] M. Craven and J. Shavlik, “Extracting tree-structured representations of
+trained networks,” in Proc. Adv. Neural Inf. Process. Syst., 1995, vol. 8.
+[29] R. Andrews, J. Diederich, and A. B. Tickle, “Survey and critique of
+techniques for extracting rules from trained artiﬁcial neural networks,”
+Knowl.-Based Syst., vol. 8, no. 6, pp. 373–389, 1995.
+[30] K. Simonyan, A. V edaldi, and A. Zisserman, “Deep inside convolutional
+networks: Visualising image classiﬁcation models and saliency maps,” in
+Proc. Int. Conf. Learn. Representations , 2014.
+[31] R. R. Selvaraju, M. Cogswell, A. Das, R. V edantam, D. Parikh, and D.
+Batra, “Grad-CAM: Visual explanations from deep networks via gradient-
+based localization,” in Proc. IEEE Int. Conf. Comput. Vis., 2017, pp. 618–
+626.
+[32] M. Sundararajan, A. Taly, and Q. Y an, “Axiomatic attribution for deep
+networks,” in Proc. Int. Conf. Mach. Learn. , 2017, pp. 3319–3328.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
+
+===== PAGE 13 =====
+258 IEEE TRANSACTIONS ON AUDIO, SPEECH AND LANGUAGE PROCESSING, VOL. 34, 2026
+[33] H. Wang et al., “Score-CAM: Score-weighted visual explanations for
+convolutional neural networks,” in Proc. IEEE/CVF Conf. Comput. Vis.
+Pattern Recognit. Workshops, 2020, pp. 24–25.
+[34] P .-T. Jiang, C.-B. Zhang, Q. Hou, M.-M. Cheng, and Y . Wei, “LayerCAM:
+Exploring hierarchical class activation maps for localization,”IEEE Trans.
+Image Process., vol. 30, pp. 5875–5888, 2021.
+[35] M. T. Ribeiro, S. Singh, and C. Guestrin, “‘Why should I trust you?’
+Explaining the predictions of any classiﬁer,” in Proc. 22nd ACM SIGKDD
+Int. Conf. Knowl. Discov. Data Mining , 2016, pp. 1135–1144.
+[36] L. S. Shapley, “A value for N-person games,” in Contribution to the Theory
+of Games, vol. 2, Princeton, NJ, USA: Princeton Univ. Press, pp. 307–317,
+1953.
+[37] S. M. Lundberg and S.-I. Lee, “A uniﬁed approach to interpreting
+model predictions,” in Proc. Adv. Neural inf. Process. Syst. , 2017,
+vol. 30.
+[38] V . Petsiuk, A. Das, and K. Saenko, “RISE: Randomized input sampling
+for explanation of black-box models,” in Proc. Brit. Mach. Vis. Conf. ,
+Newcastle, UK: BMV A Press, Sep. 3–6, 2018, Art. no. 151. [Online].
+Available: http://bmvc2018.org/contents/papers/1064.pdf
+[39] R. Fong, M. Patrick, and A. V edaldi, “Understanding deep networks via
+extremal perturbations and smooth masks,” in Proc. IEEE/CVF Int. Conf.
+Comput. Vis., 2019, pp. 2950–2958.
+[40] F. Wang, H. Liu, and J. Cheng, “Visualizing deep neural network by alter-
+nately image blurring and deblurring,”Neural Netw., vol. 97, pp. 162–172,
+2018.
+[41] Q. Zhang, Y . N. Wu, and S.-C. Zhu, “Interpretable convolutional neural
+networks,” in Proc. IEEE Conf. Comput. Vis. Pattern Recognit. , 2018,
+pp. 8827–8836.
+[42] R. Fong and A. V edaldi, “Net2V ec: Quantifying and explaining how
+concepts are encoded by ﬁlters in deep neural networks,” in Proc. IEEE
+Conf. Comput. Vis. Pattern Recognit., 2018, pp. 8730–8738.
+[43] F. Dalvi, N. Durrani, H. Sajjad, Y . Belinkov, A. Bau, and J. Glass, “What
+is one grain of sand in the desert? Analyzing individual neurons in deep
+NLP models,” in Proc. AAAI Conf. Artif. Intell. , 2019, vol. 33, no. 1,
+pp. 6309–6317.
+[44] C.-K. Y eh, J. Kim, I. E.-H. Y en, and P . K. Ravikumar, “Representer point
+selection for explaining deep neural networks,” in Proc. Adv. Neural inf.
+Process. Syst., vol. 31, 2018.
+[45] P . W. Koh and P . Liang, “Understanding black-box predictions via inﬂu-
+ence functions,” in Proc. Int. Conf. Mach. Learn. , 2017, pp. 1885–1894.
+[46] O. Li, H. Liu, C. Chen, and C. Rudin, “Deep learning for case-based rea-
+soning through prototypes: A neural network that explains its predictions,”
+in Proc. AAAI Conf. Artif. Intell. , vol. 32, no. 1, 2018, pp. 3530–3537.
+[47] C. Chen, O. Li, D. Tao, A. Barnett, C. Rudin, and J. K. Su, “This looks
+like that: Deep learning for interpretable image recognition,” in Proc. Adv.
+Neural Inf. Process. Syst., 2019, vol. 32.
+[48] D. Rymarczyk, Ł. Struski, M. Górszczak, K. Lewandowska, J. Ta-
+bor, and B. Zieli´ nski, “Interpretable image classiﬁcation with differen-
+tiable prototypes assignment,” in Proc. Eur . Conf. Comput. Vis. , 2022,
+pp. 351–368.
+[49] J. Donnelly, A. J. Barnett, and C. Chen, “Deformable protopnet: An inter-
+pretable image classiﬁer using deformable prototypes,” inProc. IEEE/CVF
+Conf. Comput. Vis. Pattern Recognit., 2022, pp. 10265–10275.
+[50] M. Nauta, J. Schlötterer, M. V an Keulen, and C. Seifert, “PIP-net: Patch-
+based intuitive prototypes for interpretable image classiﬁcation,” in Proc.
+IEEE/CVF Conf. Comput. Vis. Pattern Recognit., 2023, pp. 2744–2753.
+[51] E. Kim, S. Kim, M. Seo, and S. Y oon, “XProtoNet: Diagnosis in chest
+radiography with global and local explanations,” inProc. IEEE/CVF Conf.
+Comput. Vis. Pattern Recognit., 2021, pp. 15719–15728.
+[52] P . W. Koh et al., “Concept bottleneck models,” in Proc. Int. Conf. Mach.
+Learn., 2020, pp. 5338–5348.
+[53] Y . Y ang, A. Panagopoulou, S. Zhou, D. Jin, C. Callison-Burch, and M.
+Y atskar, “Language in a bottle: Language model guided concept bottle-
+necks for interpretable image classiﬁcation,” in Proc. IEEE/CVF Conf.
+Comput. Vis. Pattern Recognit., 2023, pp. 19187–19197.
+[54] M. Wojtas and K. Chen, “Feature importance ranking for deep learning,”
+in Proc. Adv. Neural Inf. Process. Syst., 2020, vol. 33, pp. 5105–5114.
+[55] E. Weinberger, J. Janizek, and S.-I. Lee, “Learning deep attribution priors
+based on prior knowledge,” in Proc. Adv. Neural Inf. Process. Syst., 2020,
+vol. 33, pp. 14034–14045.
+[56] K. Wang, A. V ariengien, A. Conmy, B. Shlegeris, and J. Steinhardt,
+“Interpretability in the wild: A circuit for indirect object identiﬁcation
+in GPT-2 small,” in Proc. 11th Int. Conf. Learn. Representations , Kigali,
+Rwanda: OpenReview.net, May 1–5, 2023. [Online]. Available: https:
+//openreview.net/forum?id=NpsVSN6o4ul
+[57] N. Nanda, L. Chan, T. Lieberum, J. Smith, and J. Steinhardt,
+“Progress measures for Grokking via mechanistic interpretability,” 2023,
+arXiv:2301.05217.
+[58] H. Shah, A. Ilyas, and A. Madry, “Decomposing and editing predictions
+by modeling model computation,” in Proc. 41st Int. Conf. Mach. Learn. ,
+2024, pp. 44244–44292,.
+[59] M. T. Ribeiro, S. Singh, and C. Guestrin, “Anchors: High-precision model-
+agnostic explanations,” in Proc. AAAI Conf. Artif. Intell. , 2018, vol. 32,
+no. 1.
+[60] A. Dhurandhar et al., “Explanations based on the missing: Towards con-
+trastive explanations with pertinent negatives,” in Proc. Adv. Neural Inf.
+Process. Syst., 2018, vol. 31.
+[61] T. Pedapati, A. Balakrishnan, K. Shanmugam, and A. Dhurandhar, “Learn-
+ing global transparent models consistent with local contrastive explana-
+tions,” in Proc. Adv. Neural Inf. Process. Syst. , 2020, vol. 33, pp. 3592–
+3602.
+[62] P . Li, L. Li, A. Hamdulla, and D. Wang, “Reliable visualization for deep
+speaker recognition,” in Proc. Interspeech, 2022, pp. 331–335.
+[63] P . Li, L. Li, A. Hamdulla, and D. Wang, “Visualizing data augmentation
+in deep speaker recognition,” in Proc. Interspeech, 2023, pp. 2243–2247.
+[64] P . Li, T. Wang, L. Li, A. Hamdulla, and D. Wang, “How phonemes
+contribute to deep speaker models?,” inProc. 2024 IEEE Int. Conf. Acoust.,
+Speech, Signal Process. Workshops, 2024, pp. 838–842.
+[65] J. Zhang, L. He, X. Guo, and J. Ma, “A study on visualization of voiceprint
+feature,” in Proc. Interspeech, 2023, pp. 2233–2237.
+[66] T. Thebaud, G. Sierra, S. Juan, and M. Tahon, “A phonetic analysis of
+speaker veriﬁcation systems through phoneme selection and integrated
+gradients,” in Proc. Speaker Lang. Recognit. Workshop-Odyssey, 2024.
+[67] I. Ben-Amor, J.-F. Bonastre, B. O’Brien, and P .-M. Bousquet, “Describing
+the phonetics in the underlying speech attributes for deep and interpretable
+speaker recognition,” in Proc. Interspeech, 2023, pp. 3207–3211.
+[68] Y . Ma, S. Wang, T. Liu, and H. Li, “ExPO: Explainable phonetic trait-
+oriented network for speaker veriﬁcation,” IEEE Signal Process. Lett. ,
+vol. 32, pp. 731–735, 2025.
+[69] X. Wu, C. Luu, P . Bell, and A. Rajan, “Explainable attribute-based speaker
+veriﬁcation,” 2024, arXiv:2405.19796.
+[70] J. Zhu, C. Zhang, and D. Jurgens, “Phone-to-audio alignment without text:
+A semi-supervised approach,” in Proc. IEEE Int. Conf. Acoust., Speech
+Signal Process., 2022, pp. 8167–8171.
+[71] A. Nagrani, J. S. Chung, and A. Zisserman, “V oxCeleb: A large-scale
+speaker identiﬁcation dataset,” inProc. Interspeech, 2017, pp. 2616–2620.
+[72] J. Chung, A. Nagrani, and A. Zisserman, “V oxCeleb2: Deep speaker
+recognition,” in Proc. Interspeech, 2018, pp. 1086–1090.
+[73] M. McLaren, L. Ferrer, D. Castan, and A. Lawson, “The speakers in the
+wild (SITW) speaker recognition database,” in Proc. Interspeech, 2016,
+pp. 818–822.
+[74] V . Panayotov, G. Chen, D. Povey, and S. Khudanpur, “Librispeech: An
+ASR corpus based on public domain audio books,” in Proc. 2015 IEEE
+Int. Conf. Acoust., Speech Signal Process. , 2015, pp. 5206–5210.
+[75] “The CMU pronouncing dictionary,” 2014. Accessed: Mar. 5, 2024. [On-
+line]. Available: http://www.speech.cs.cmu.edu/cgi-bin/cmudict
+[76] H. Wang et al., “Wespeaker: A research and production oriented speaker
+embedding learning toolkit,” inProc. 2023 IEEE Int. Conf. Acoust., Speech
+Signal Process., 2023, pp. 1–5.
+[77] D. Snyder, G. Chen, and D. Povey, “MUSAN: A music, speech, and noise
+corpus,” 2015, arXiv:1510.08484.
+[78] T. Ko, V . Peddinti, D. Povey, M. L. Seltzer, and S. Khudanpur, “A study
+on data augmentation of reverberant speech for robust speech recogni-
+tion,” in Proc. IEEE Int. Conf. Acoust., Speech Signal Process. , 2017,
+pp. 5220–5224.
+[79] J. Wang, F. Zhou, S. Wen, X. Liu, and Y . Lin, “Deep metric learning with
+angular loss,” inProc. IEEE Int. Conf. Comput. Vis., 2017, pp. 2593–2601.
+[80] A. Moez, B. Jean-François, B. K. Waad, R. Solange, and K. Juliette,
+“Phonetic content impact on forensic voice comparison,” in Proc. 2016
+IEEE Spoken Lang. Technol. Workshop, 2016, pp. 210–217.
+[81] M. Sambur, “Selection of acoustic features for speaker identiﬁcation,”
+IEEE Trans. Acoust., Speech, Signal Process., vol. 23, no. 2, pp. 176–182,
+Apr. 1975.
+[82] K. Amino and T. Arai, “Speaker-dependent characteristics of the nasals,”
+F orensic Sci. Int., vol. 185, no. 1–3, pp. 21–28, 2009.
+[83] R. Kashyap, “Speaker recognition from an unknown utterance and speaker-
+speech interaction,” IEEE Trans. Acoust., Speech, Signal Process., vol. 24,
+no. 6, pp. 481–488, Dec. 1976.
+[84] C. Kavanagh, “New consonantal acoustic parameters for forensic speaker
+comparison,” Ph.D. dissertation, Univ. Y ork, Y ork, U.K., 2012.
+Authorized licensed use limited to: WUHAN UNIVERSITY OF TECHNOLOGY. Downloaded on February 12,2026 at 04:08:19 UTC from IEEE Xplore.  Restrictions apply. 
