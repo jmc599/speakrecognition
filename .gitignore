@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+
+.vscode/
+
+checkpoints/
+*.pth
+
+lists/
+
+_pdf_extract.txt
+_pdf_full.txt
