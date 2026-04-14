@@ -1,0 +1,6 @@
+artifacts/
+checkpoints/
+__pycache__/
+core/__pycache__/
+data_loader/__pycache__/
+utils/__pycache__/
