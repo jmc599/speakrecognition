@@ -16,7 +16,15 @@ def parse_args():
     parser.add_argument("--checkpoint", type=str, required=True)
     parser.add_argument("--base-path", type=str, required=True)
     parser.add_argument("--trials", type=str, required=True)
-    parser.add_argument("--enroll-list", type=str, required=True)
+    parser.add_argument(
+        "--enroll-list",
+        type=str,
+        default="",
+        help=(
+            "Optional enroll mapping list. Leave empty when trials use the "
+            "'0/1 audio_a audio_b' format."
+        ),
+    )
     parser.add_argument("--output", type=str, required=True)
     parser.add_argument("--embedding-dim", type=int, default=0)
     parser.add_argument("--max-frames", type=int, default=DEFAULT_MAX_FRAMES)
@@ -46,17 +54,20 @@ def main():
 
     checkpoint_path = Path(args.checkpoint)
     trials_path = Path(args.trials)
-    enroll_list_path = Path(args.enroll_list)
     output_path = Path(args.output)
 
     if not checkpoint_path.is_file():
         raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
     if not trials_path.is_file():
         raise FileNotFoundError(f"Trials not found: {trials_path}")
-    if not enroll_list_path.is_file():
-        raise FileNotFoundError(f"Enroll list not found: {enroll_list_path}")
+    if args.enroll_list:
+        enroll_list_path = Path(args.enroll_list)
+        if not enroll_list_path.is_file():
+            raise FileNotFoundError(f"Enroll list not found: {enroll_list_path}")
+    else:
+        enroll_list_path = None
 
-    enroll_map = load_enroll_map(str(enroll_list_path))
+    enroll_map = load_enroll_map(str(enroll_list_path)) if enroll_list_path else {}
     trials = sample_trials(
         str(trials_path),
         enroll_map=enroll_map,

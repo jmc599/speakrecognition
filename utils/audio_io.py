@@ -4,10 +4,31 @@ import numpy as np
 import torch
 import torchaudio
 
+from utils.inference_audio import preprocess_waveform_for_inference
+
 try:
     import av
 except ImportError:  # pragma: no cover
     av = None
+
+
+def _load_audio_with_torchaudio(audio_path):
+    errors = []
+    for backend in ("soundfile", "ffmpeg"):
+        try:
+            waveform, sample_rate = torchaudio.load(audio_path, backend=backend)
+            return waveform, sample_rate, backend
+        except TypeError:
+            break
+        except Exception as exc:  # pragma: no cover
+            errors.append(f"{backend}: {exc}")
+
+    try:
+        waveform, sample_rate = torchaudio.load(audio_path)
+        return waveform, sample_rate, "auto"
+    except Exception as exc:
+        errors.append(f"auto: {exc}")
+        raise RuntimeError("; ".join(errors))
 
 
 def _load_audio_with_pyav(audio_path):
@@ -48,22 +69,42 @@ def _load_audio_with_pyav(audio_path):
     return waveform, 16000
 
 
-def load_audio_mono_16k(audio_path):
+def load_audio_mono_16k(audio_path, for_inference=False, return_info=False):
     audio_path = str(Path(audio_path))
     try:
-        waveform, sr = torchaudio.load(audio_path)
+        waveform, sr, backend_used = _load_audio_with_torchaudio(audio_path)
         if waveform.size(0) > 1:
             waveform = waveform.mean(dim=0, keepdim=True)
         if sr != 16000:
             waveform = torchaudio.functional.resample(
                 waveform, orig_freq=sr, new_freq=16000
             )
-        return waveform, 16000
+        sample_rate = 16000
     except Exception as exc:
         try:
-            return _load_audio_with_pyav(audio_path)
+            waveform, sample_rate = _load_audio_with_pyav(audio_path)
+            backend_used = "pyav"
         except Exception as fallback_exc:
             raise RuntimeError(
                 f"Failed to load audio: {audio_path}. "
                 f"torchaudio error: {exc}. PyAV error: {fallback_exc}"
             ) from fallback_exc
+
+    info = {
+        "sample_rate": int(sample_rate),
+        "for_inference": bool(for_inference),
+        "audio_backend": backend_used,
+    }
+    if for_inference:
+        processed, preprocess_info = preprocess_waveform_for_inference(
+            waveform.squeeze(0).cpu().numpy(),
+            sample_rate=sample_rate,
+            trim_silence=True,
+            normalize_volume=True,
+        )
+        waveform = torch.from_numpy(processed).unsqueeze(0)
+        info.update(preprocess_info)
+
+    if return_info:
+        return waveform, sample_rate, info
+    return waveform, sample_rate

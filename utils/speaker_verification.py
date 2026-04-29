@@ -6,6 +6,8 @@ import torchaudio
 
 from core.model import ResNet34_SE
 from utils.audio_io import load_audio_mono_16k
+from utils.checkpoint_io import load_torch_checkpoint
+from utils.legacy_feature import DEFAULT_MAX_FRAMES, LEGACY_NUM_MELS
 
 
 _AUDIO_SUFFIXES = (".wav", ".flac", ".mp3", ".m4a", ".ogg", ".opus")
@@ -49,12 +51,21 @@ def build_mel_transform():
         n_fft=512,
         win_length=400,
         hop_length=160,
-        n_mels=64,
+        n_mels=LEGACY_NUM_MELS,
     )
 
 
-def load_audio_chunks(audio_path, mel_transform, max_frames=200, num_eval=5):
-    waveform, _ = load_audio_mono_16k(audio_path)
+def load_audio_chunks(
+    audio_path,
+    mel_transform,
+    max_frames=DEFAULT_MAX_FRAMES,
+    num_eval=5,
+    preprocess_for_inference=False,
+):
+    waveform, _ = load_audio_mono_16k(
+        audio_path,
+        for_inference=preprocess_for_inference,
+    )
 
     mel_spec = mel_transform(waveform)
     mel_spec = torch.log(mel_spec + 1e-6)
@@ -91,7 +102,7 @@ def infer_embedding_dim(checkpoint):
 
 
 def load_model(checkpoint_path, device, embedding_dim=None):
-    checkpoint = torch.load(checkpoint_path, map_location=device)
+    checkpoint = load_torch_checkpoint(checkpoint_path, map_location=device)
     state_dict = _extract_state_dict(checkpoint)
 
     if embedding_dim is None:
@@ -117,8 +128,9 @@ def extract_embedding(
     device,
     mel_transform,
     base_path="",
-    max_frames=200,
+    max_frames=DEFAULT_MAX_FRAMES,
     num_eval=5,
+    preprocess_for_inference=False,
 ):
     resolved = resolve_audio_path(audio_path, base_path=base_path)
     chunks = load_audio_chunks(
@@ -126,6 +138,7 @@ def extract_embedding(
         mel_transform=mel_transform,
         max_frames=max_frames,
         num_eval=num_eval,
+        preprocess_for_inference=preprocess_for_inference,
     ).to(device)
 
     emb = model(chunks)
@@ -143,8 +156,9 @@ def cosine_score(
     device,
     mel_transform,
     base_path="",
-    max_frames=200,
+    max_frames=DEFAULT_MAX_FRAMES,
     num_eval=5,
+    preprocess_for_inference=False,
 ):
     emb_a, path_a = extract_embedding(
         model,
@@ -154,6 +168,7 @@ def cosine_score(
         base_path=base_path,
         max_frames=max_frames,
         num_eval=num_eval,
+        preprocess_for_inference=preprocess_for_inference,
     )
     emb_b, path_b = extract_embedding(
         model,
@@ -163,6 +178,7 @@ def cosine_score(
         base_path=base_path,
         max_frames=max_frames,
         num_eval=num_eval,
+        preprocess_for_inference=preprocess_for_inference,
     )
     score = F.cosine_similarity(emb_a, emb_b).item()
     return score, path_a, path_b

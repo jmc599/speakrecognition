@@ -5,6 +5,9 @@ import numpy as np
 import torch
 from tqdm import tqdm
 
+from utils.detection_metrics import compute_detection_metrics
+from utils.legacy_feature import DEFAULT_MAX_FRAMES
+from utils.score_norm import apply_symmetric_score_norm, compute_cohort_stats
 from utils.speaker_verification import extract_embedding
 
 
@@ -108,39 +111,27 @@ def sample_trials(
     return sampled
 
 
-def compute_detection_metrics(scores, labels):
-    if labels.sum() == 0 or labels.sum() == len(labels):
-        raise ValueError("Detection metrics require both target and non-target trials.")
+def load_audio_list(audio_list_path):
+    if not audio_list_path:
+        return []
 
-    order = np.argsort(-scores)
-    scores = scores[order]
-    labels = labels[order]
+    path = Path(audio_list_path)
+    if not path.is_file():
+        raise FileNotFoundError(f"Audio list not found: {path}")
 
-    target_total = max(int(labels.sum()), 1)
-    non_target_total = max(int((1 - labels).sum()), 1)
-
-    tp = np.cumsum(labels)
-    fp = np.cumsum(1 - labels)
-    fn = target_total - tp
-
-    far = fp / non_target_total
-    frr = fn / target_total
-    diff = np.abs(far - frr)
-    eer_idx = int(np.argmin(diff))
-    eer = float((far[eer_idx] + frr[eer_idx]) / 2.0)
-    eer_threshold = float(scores[eer_idx])
-
-    p_target = 0.01
-    c_miss = 1.0
-    c_fa = 1.0
-    dcf = c_miss * frr * p_target + c_fa * far * (1.0 - p_target)
-    min_dcf = float(dcf.min() / min(c_miss * p_target, c_fa * (1.0 - p_target)))
-
-    return {
-        "eer": eer,
-        "eer_threshold": eer_threshold,
-        "min_dcf": min_dcf,
-    }
+    items = []
+    seen = set()
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            audio_path = line.strip().split()
+            if not audio_path:
+                continue
+            value = audio_path[0]
+            if value in seen:
+                continue
+            seen.add(value)
+            items.append(value)
+    return items
 
 
 @torch.no_grad()
@@ -150,9 +141,15 @@ def evaluate_trial_list(
     mel_transform,
     base_path,
     trials,
-    max_frames=200,
+    max_frames=DEFAULT_MAX_FRAMES,
     num_eval=5,
+    preprocess_for_inference=False,
     show_progress=True,
+    return_raw=False,
+    score_norm="none",
+    cohort_top_k=300,
+    cohort_list_path="",
+    cohort_base_path="",
 ):
     unique_audio = set()
     target_count = 0
@@ -174,8 +171,70 @@ def evaluate_trial_list(
             base_path=base_path,
             max_frames=max_frames,
             num_eval=num_eval,
+            preprocess_for_inference=preprocess_for_inference,
         )
         embedding_cache[audio_path] = (emb, resolved)
+
+    cohort_means = {}
+    cohort_stds = {}
+    if score_norm != "none":
+        if cohort_list_path:
+            cohort_audio = load_audio_list(cohort_list_path)
+            if not cohort_audio:
+                raise RuntimeError("No cohort audio found in cohort list.")
+
+            cohort_iter = cohort_audio
+            if show_progress:
+                cohort_iter = tqdm(cohort_iter, desc="Extract cohort embeddings")
+
+            cohort_embeddings_list = []
+            for audio_path in cohort_iter:
+                emb, _ = extract_embedding(
+                    model,
+                    audio_path,
+                    device=device,
+                    mel_transform=mel_transform,
+                    base_path=cohort_base_path or base_path,
+                    max_frames=max_frames,
+                    num_eval=num_eval,
+                    preprocess_for_inference=preprocess_for_inference,
+                )
+                cohort_embeddings_list.append(emb.numpy())
+
+            cohort_embeddings = np.concatenate(cohort_embeddings_list, axis=0).astype(
+                np.float32
+            )
+            query_embeddings = np.concatenate(
+                [embedding_cache[audio_path][0].numpy() for audio_path in sorted(unique_audio)],
+                axis=0,
+            ).astype(np.float32)
+            means, stds = compute_cohort_stats(
+                query_embeddings,
+                cohort_embeddings,
+                mode=score_norm,
+                top_k=cohort_top_k,
+                exclude_indices=None,
+            )
+            for idx, audio_path in enumerate(sorted(unique_audio)):
+                cohort_means[audio_path] = float(means[idx])
+                cohort_stds[audio_path] = float(stds[idx])
+        else:
+            cohort_audio = sorted(unique_audio)
+            cohort_embeddings = np.concatenate(
+                [embedding_cache[audio_path][0].numpy() for audio_path in cohort_audio],
+                axis=0,
+            ).astype(np.float32)
+            exclude_indices = [{idx} for idx in range(len(cohort_audio))]
+            means, stds = compute_cohort_stats(
+                cohort_embeddings,
+                cohort_embeddings,
+                mode=score_norm,
+                top_k=cohort_top_k,
+                exclude_indices=exclude_indices,
+            )
+            for idx, audio_path in enumerate(cohort_audio):
+                cohort_means[audio_path] = float(means[idx])
+                cohort_stds[audio_path] = float(stds[idx])
 
     scores = array("f")
     labels = array("b")
@@ -185,7 +244,17 @@ def evaluate_trial_list(
     for audio_a, audio_b, label in trial_iter:
         emb_a, _ = embedding_cache[audio_a]
         emb_b, _ = embedding_cache[audio_b]
-        score = torch.nn.functional.cosine_similarity(emb_a, emb_b).item()
+        raw_score = torch.nn.functional.cosine_similarity(emb_a, emb_b).item()
+        if score_norm == "none":
+            score = raw_score
+        else:
+            score = apply_symmetric_score_norm(
+                raw_score,
+                cohort_means[audio_a],
+                cohort_stds[audio_a],
+                cohort_means[audio_b],
+                cohort_stds[audio_b],
+            )
         scores.append(score)
         labels.append(label)
 
@@ -203,6 +272,24 @@ def evaluate_trial_list(
         "eer": det["eer"],
         "eer_threshold": det["eer_threshold"],
         "min_dcf": det["min_dcf"],
+        "accuracy": det["accuracy"],
+        "far": det["far"],
+        "frr": det["frr"],
+        "tp": det["tp"],
+        "tn": det["tn"],
+        "fp": det["fp"],
+        "fn": det["fn"],
         "target_mean": float(target_scores.mean()) if len(target_scores) else 0.0,
         "non_target_mean": float(non_target_scores.mean()) if len(non_target_scores) else 0.0,
+        "curve_scores": det["curve_scores"],
+        "curve_far": det["curve_far"],
+        "curve_frr": det["curve_frr"],
+        "scores": scores_np if return_raw else None,
+        "labels": labels_np if return_raw else None,
+        "threshold_far_1": det["threshold_far_1"],
+        "frr_at_far_1": det["frr_at_far_1"],
+        "threshold_far_0p1": det["threshold_far_0p1"],
+        "frr_at_far_0p1": det["frr_at_far_0p1"],
+        "score_norm": score_norm,
+        "cohort_top_k": int(cohort_top_k),
     }

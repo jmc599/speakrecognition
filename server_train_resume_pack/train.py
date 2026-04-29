@@ -1267,6 +1267,7 @@ def main():
             )
         veri_metrics = None
         if monitor_trials:
+            model.eval()
             veri_metrics = evaluate_trial_list(
                 model,
                 device=device,
@@ -1278,6 +1279,7 @@ def main():
                 preprocess_for_inference=args.preprocess_for_inference,
                 show_progress=True,
             )
+            model.train()
 
         if scheduler is not None:
             scheduler.step()

@@ -1,6 +1,12 @@
 import argparse
+from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
+import numpy as np
 import torch
+from matplotlib import pyplot as plt
+from matplotlib.ticker import PercentFormatter
 
 from utils.speaker_verification import build_mel_transform, load_model
 from utils.verification_eval import (
@@ -8,7 +14,6 @@ from utils.verification_eval import (
     load_enroll_map,
     sample_trials,
 )
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate speaker verification trials.")
@@ -42,8 +47,13 @@ def parse_args():
         default=0,
         help="Embedding dimension. Default: infer from checkpoint.",
     )
-    parser.add_argument("--max-frames", type=int, default=200)
+    parser.add_argument("--max-frames", type=int, default=300)
     parser.add_argument("--num-eval", type=int, default=5)
+    parser.add_argument(
+        "--preprocess-for-inference",
+        action="store_true",
+        help="Apply trim silence + loudness normalization before feature extraction.",
+    )
     parser.add_argument(
         "--limit",
         type=int,
@@ -63,7 +73,80 @@ def parse_args():
         choices=["balanced", "random"],
         help="Sampling mode used when --limit > 0.",
     )
+    parser.add_argument(
+        "--plot-path",
+        type=str,
+        default="",
+        help="Optional PNG path for score/threshold visualization.",
+    )
     return parser.parse_args()
+
+
+def save_threshold_plot(metrics, plot_path):
+    plot_path = Path(plot_path)
+    plot_path.parent.mkdir(parents=True, exist_ok=True)
+
+    scores = metrics["scores"]
+    labels = metrics["labels"]
+    if scores is None or labels is None:
+        raise RuntimeError("Raw scores are required to draw plots.")
+
+    target_scores = scores[labels == 1]
+    non_target_scores = scores[labels == 0]
+    threshold = metrics["eer_threshold"]
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    bins = 60
+    target_weights = np.full(
+        len(target_scores),
+        100.0 / max(len(target_scores), 1),
+        dtype=np.float32,
+    )
+    non_target_weights = np.full(
+        len(non_target_scores),
+        100.0 / max(len(non_target_scores), 1),
+        dtype=np.float32,
+    )
+    axes[0].hist(
+        target_scores,
+        bins=bins,
+        weights=target_weights,
+        alpha=0.6,
+        label="target",
+        color="#2f6fed",
+    )
+    axes[0].hist(
+        non_target_scores,
+        bins=bins,
+        weights=non_target_weights,
+        alpha=0.6,
+        label="non-target",
+        color="#ef6c3b",
+    )
+    axes[0].axvline(threshold, color="black", linestyle="--", linewidth=2, label="EER threshold")
+    axes[0].set_title("Score Distribution")
+    axes[0].set_xlabel("Cosine score")
+    axes[0].set_ylabel("Percentage of trials (%)")
+    axes[0].yaxis.set_major_formatter(PercentFormatter())
+    axes[0].legend()
+
+    order = metrics["curve_scores"].argsort()
+    curve_scores = metrics["curve_scores"][order]
+    curve_far = metrics["curve_far"][order]
+    curve_frr = metrics["curve_frr"][order]
+    axes[1].plot(curve_scores, curve_far, label="FAR", color="#ef6c3b")
+    axes[1].plot(curve_scores, curve_frr, label="FRR", color="#2f6fed")
+    axes[1].axvline(threshold, color="black", linestyle="--", linewidth=2, label="EER threshold")
+    axes[1].set_title("Threshold Curve")
+    axes[1].set_xlabel("Threshold")
+    axes[1].set_ylabel("Error rate")
+    axes[1].legend()
+
+    fig.tight_layout()
+    fig.savefig(plot_path, dpi=160, bbox_inches="tight")
+    plt.close(fig)
+    return plot_path
 
 
 def main():
@@ -93,7 +176,9 @@ def main():
         trials=trials,
         max_frames=args.max_frames,
         num_eval=args.num_eval,
+        preprocess_for_inference=args.preprocess_for_inference,
         show_progress=True,
+        return_raw=bool(args.plot_path),
     )
 
     print(f"Device: {device}")
@@ -105,8 +190,15 @@ def main():
     print(f"EER: {metrics['eer'] * 100:.4f}%")
     print(f"EER threshold: {metrics['eer_threshold']:.6f}")
     print(f"minDCF@0.01: {metrics['min_dcf']:.6f}")
+    print(f"Accuracy@EER-threshold: {metrics['accuracy'] * 100:.4f}%")
+    print(f"FAR@EER-threshold: {metrics['far'] * 100:.4f}%")
+    print(f"FRR@EER-threshold: {metrics['frr'] * 100:.4f}%")
+    print(f"TP={metrics['tp']} TN={metrics['tn']} FP={metrics['fp']} FN={metrics['fn']}")
     print(f"Target mean score: {metrics['target_mean']:.6f}")
     print(f"Non-target mean score: {metrics['non_target_mean']:.6f}")
+    if args.plot_path:
+        saved_path = save_threshold_plot(metrics, args.plot_path)
+        print(f"Saved plot: {saved_path}")
 
 
 if __name__ == "__main__":

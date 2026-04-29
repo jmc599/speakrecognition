@@ -1,0 +1,7 @@
+PyQt5>=5.15,<6
+paramiko>=3.4,<4
+requests>=2.31,<3
+sounddevice>=0.4.7,<1
+soundfile>=0.12,<1
+funasr
+funasr-onnx

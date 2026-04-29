@@ -60,6 +60,7 @@ python train.py \
   --list-path "lists/dev_splits/train_list_main.txt" \
   --init-model "${VOX2_CKPT}" \
   --optimizer adamw \
+  --val-ratio 0 \
   --train-sampler balanced_speaker \
   --train-sample-repeat-cap 3 \
   --epochs "${TARGET_EPOCHS}" \

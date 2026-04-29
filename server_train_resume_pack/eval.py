@@ -3,8 +3,10 @@ from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")
+import numpy as np
 import torch
 from matplotlib import pyplot as plt
+from matplotlib.ticker import PercentFormatter
 
 from utils.speaker_verification import build_mel_transform, load_model
 from utils.verification_eval import (
@@ -96,10 +98,28 @@ def save_threshold_plot(metrics, plot_path):
     fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
 
     bins = 60
-    axes[0].hist(target_scores, bins=bins, alpha=0.6, label="target", color="#2f6fed")
+    target_weights = np.full(
+        len(target_scores),
+        100.0 / max(len(target_scores), 1),
+        dtype=np.float32,
+    )
+    non_target_weights = np.full(
+        len(non_target_scores),
+        100.0 / max(len(non_target_scores), 1),
+        dtype=np.float32,
+    )
+    axes[0].hist(
+        target_scores,
+        bins=bins,
+        weights=target_weights,
+        alpha=0.6,
+        label="target",
+        color="#2f6fed",
+    )
     axes[0].hist(
         non_target_scores,
         bins=bins,
+        weights=non_target_weights,
         alpha=0.6,
         label="non-target",
         color="#ef6c3b",
@@ -107,7 +127,8 @@ def save_threshold_plot(metrics, plot_path):
     axes[0].axvline(threshold, color="black", linestyle="--", linewidth=2, label="EER threshold")
     axes[0].set_title("Score Distribution")
     axes[0].set_xlabel("Cosine score")
-    axes[0].set_ylabel("Count")
+    axes[0].set_ylabel("Percentage of trials (%)")
+    axes[0].yaxis.set_major_formatter(PercentFormatter())
     axes[0].legend()
 
     order = metrics["curve_scores"].argsort()

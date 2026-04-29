@@ -5,8 +5,45 @@ __pycache__/
 
 checkpoints/
 *.pth
+*.pt
+*.onnx
+*.rknn
+*.npy
+
+*.tar.gz
+*.tgz
+*.zip
+*.rar
+*.7z
+*.whl
+
+*.wav
+*.m4a
+*.flac
+*.mp3
+*.ogg
+*.opus
 
 lists/
+runs/
+plots/
+assets/
+rknn_eval_set_official_eval_inf/
+server_train_min/
+third_party/
+server_train_resume_pack/archive_manifests/
+server_train_resume_pack/pullback_bundles/
+pullback_*_included.txt
+pullback_*_missing.txt
+
+*.db
+*.sqlite
+*.sqlite3
+history.db
+
+artifacts/*
+!artifacts/thesis_assets/
+!artifacts/thesis_assets/**
 
 _pdf_extract.txt
 _pdf_full.txt
